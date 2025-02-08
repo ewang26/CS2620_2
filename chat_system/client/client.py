@@ -15,7 +15,7 @@ class ChatClient:
             on_send_message=self.send_message,
             on_list_accounts=self.list_accounts
         )
-    
+
     def connect(self):
         #connect to the server
         try:
@@ -28,27 +28,27 @@ class ChatClient:
         except Exception as e:
             self.gui.display_message(f"Connection failed: {e}")
             return False
-    
+
     def create_account(self, username: str, password: str):
         #send create account request
         message = Protocol.create_account_request(username, password)
         self.socket.send(message)
-    
+
     def login(self, username: str, password: str):
         """Send login request."""
         message = Protocol.login_request(username, password)
         self.socket.send(message)
-    
+
     def list_accounts(self, pattern: Optional[str]):
         """Send list accounts request."""
         message = Protocol.list_accounts_request(pattern)
         self.socket.send(message)
-    
+
     def send_message(self, recipient: str, content: str):
         """Send a chat message."""
         message = Protocol.send_message_request(recipient, content)
         self.socket.send(message)
-    
+
     def _receive_messages(self):
         """Receive and process messages from the server."""
         while True:
@@ -57,9 +57,9 @@ class ChatClient:
                 if not data:
                     self.gui.display_message("Disconnected from server")
                     break
-                
+
                 message = Protocol.unpack_message(data)
-                
+
                 if message.type == MessageType.SUCCESS:
                     self.gui.display_message(f"Success: {message.payload.decode()}")
                 elif message.type == MessageType.ERROR:
@@ -72,16 +72,17 @@ class ChatClient:
                 elif message.type == MessageType.RECEIVE_MESSAGE:
                     sender, content = message.payload.decode().split(':', 1)
                     self.gui.display_message(f"From {sender}: {content}")
-                
+
             except Exception as e:
                 self.gui.display_message(f"Error receiving message: {e}")
                 break
-    
+
     def run(self):
         """Start the client."""
         if self.connect():
             self.gui.run()
 
 if __name__ == "__main__":
+    # TODO: Read port from cmd line args
     client = ChatClient()
-    client.run() 
+    client.run()
