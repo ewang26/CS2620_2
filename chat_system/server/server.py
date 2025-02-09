@@ -31,7 +31,7 @@ class ChatServer:
         print(f"Server started on {self.host}:{self.port}")
 
         while True:
-            events = self.selector.select()
+            events = self.selector.select(timeout=1)
             for key, mask in events:
                 callback = key.data
                 callback(key.fileobj)
@@ -105,8 +105,7 @@ class ChatServer:
             read = False
             for client_sock, user_id in self.client_sessions.items():
                 if user_id == recipient:
-                    response = self.protocol.message_class(MessageType.RECEIVED_MESSAGE)
-                    response.new_message = message
+                    response = (self.protocol.message_class(MessageType.RECEIVED_MESSAGE))(message)
                     client_sock.send(response.pack())
                     read = True
             if not read:
@@ -144,9 +143,9 @@ class ChatServer:
         sock.close()
 
 if __name__ == "__main__":
-    if len(sys.argv) != 2:
+    if len(sys.argv) < 3:
         print("Usage: python server.py <host> <port>")
         sys.exit(1)
 
-    server = ChatServer(host=sys.argv[1], port=int(sys.argv[2]))
+    server = ChatServer(host=sys.argv[1], port=int(sys.argv[2]), custom_protocol=(len(sys.argv) < 4 or sys.argv[3] != "json"))
     server.start()

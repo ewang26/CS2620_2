@@ -1,5 +1,5 @@
 from enum import IntEnum
-from typing import List, Dict
+from typing import List, Dict, Type
 from ..user import Message
 from dataclasses import dataclass
 
@@ -94,10 +94,10 @@ class DeleteMessagesMessage(ProtocolMessage):
 
 
 class Protocol:
-    message_classes: Dict[MessageType, ProtocolMessage]
+    message_classes: Dict[MessageType, Type[ProtocolMessage]]
 
     def parse_message(self, data: bytes) -> ProtocolMessage:
         pass
 
-    def message_class(self, msg_type: MessageType) -> ProtocolMessage:
+    def message_class(self, msg_type: MessageType) -> Type[ProtocolMessage]:
         return self.message_classes[msg_type]

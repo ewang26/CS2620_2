@@ -52,7 +52,7 @@ class AccountManager:
             return self.accounts[user_id]
         return None
 
-    def list_accounts(self, pattern: Optional[str] = None) -> List[User]:
+    def list_accounts(self, pattern: str) -> List[User]:
         """List accounts matching the pattern."""
         regex = re.compile(pattern.replace('*', '.*'))
         return [user for user in self.accounts.values() if regex.match(user.name)]
