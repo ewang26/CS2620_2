@@ -3,6 +3,13 @@ from typing import Optional, List, Tuple, Any
 from ..user import User, Message
 from .protocol import *
 
+# Helper functions to serialize and deserialize messages
+def message_to_json(message: Message) -> Any:
+    return {"i": message.id, "s": message.sender, "c": message.content}
+
+def json_to_message(data: Any) -> Message:
+    return Message(data["i"], data["s"], data["c"])
+
 class JSON_CreateAccountMessage(CreateAccountMessage):
     def pack(self) -> bytes:
         return json.dumps({"t": self.type, "n": self.name, "p": self.password}).encode('utf-8')
@@ -38,7 +45,7 @@ class JSON_ListUsersMessage(ListUsersMessage):
     def pack_return(self, data: List[User]) -> bytes:
         user_pairs = []
         for user in data:
-            user_pairs = [user.id, user.name]
+            user_pairs.append([user.id, user.name])
         return json.dumps({"r": user_pairs}).encode('utf-8')
     def unpack_return(self, data: bytes) -> List[Tuple[int, str]]:
         user_pairs = json.loads(data.decode('utf-8'))["r"]
@@ -78,10 +85,10 @@ class JSON_SendMessageMessage(SendMessageMessage):
 
 class JSON_ReceivedMessageMessage(ReceivedMessageMessage):
     def pack(self) -> bytes:
-        return json.dumps({"t": self.type, "n": self.new_message}).encode('utf-8')
+        return json.dumps({"t": self.type, "n": message_to_json(self.new_message)}).encode('utf-8')
     def unpack(self, data: bytes):
         d = json.loads(data.decode('utf-8'))
-        self.new_message = d["n"]
+        self.new_message = json_to_message(d["n"])
     def pack_return(self, data: any) -> bytes:
         pass
     def unpack_return(self, data: bytes) -> any:
@@ -103,10 +110,11 @@ class JSON_PopUnreadMessagesMessage(PopUnreadMessagesMessage):
     def unpack(self, data: bytes):
         self.num_messages = json.loads(data.decode('utf-8'))["n"]
     def pack_return(self, data: List[Message]) -> bytes:
-        return json.dumps({"r": data}).encode('utf-8')
+        messages_json = [message_to_json(m) for m in data]
+        return json.dumps({"r": messages_json}).encode('utf-8')
     def unpack_return(self, data: bytes) -> List[Message]:
         d = json.loads(data.decode('utf-8'))["r"]
-        return [Message(m["id"], m["sender"], m["content"]) for m in d]
+        return [json_to_message(m) for m in d]
 
 class JSON_GetReadMessagesMessage(GetReadMessagesMessage):
     def pack(self) -> bytes:
@@ -116,10 +124,11 @@ class JSON_GetReadMessagesMessage(GetReadMessagesMessage):
         self.offset = d["o"]
         self.num_messages = d["n"]
     def pack_return(self, data: List[Message]) -> bytes:
-        return json.dumps({"r": data}).encode('utf-8')
+        messages_json = [message_to_json(m) for m in data]
+        return json.dumps({"r": messages_json}).encode('utf-8')
     def unpack_return(self, data: bytes) -> List[Message]:
         d = json.loads(data.decode('utf-8'))["r"]
-        return [Message(m["id"], m["sender"], m["content"]) for m in d]
+        return [json_to_message(m) for m in d]
 
 class JSON_DeleteMessagesMessage(DeleteMessagesMessage):
     def pack(self) -> bytes:
@@ -132,7 +141,7 @@ class JSON_DeleteMessagesMessage(DeleteMessagesMessage):
         pass
 
 class JSONProtocol(Protocol):
-    message_classes: Dict[MessageType, ProtocolMessage] = {
+    message_classes: Dict[MessageType, Type[ProtocolMessage]] = {
         MessageType.CREATE_ACCOUNT: JSON_CreateAccountMessage,
         MessageType.LOGIN: JSON_LoginMessage,
         MessageType.LIST_USERS: JSON_ListUsersMessage,

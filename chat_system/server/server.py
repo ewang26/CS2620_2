@@ -66,8 +66,6 @@ class ChatServer:
             success = self.account_manager.create_account(username, password)
             response = message.pack_return(success)
             sock.send(response)
-        elif self.client_sessions[sock] == -1:
-            print("Message received before login:", message.type)
 
         elif message.type == MessageType.LOGIN:
             username, password = message.name, message.password
@@ -79,10 +77,16 @@ class ChatServer:
                 response = message.pack_return("Invalid username or password")
             sock.send(response)
 
+        elif self.client_sessions[sock] == -1:
+            print("Message received before login:", message.type)
+
         elif message.type == MessageType.LIST_USERS:
             pattern = message.pattern
             accounts = self.account_manager.list_accounts(pattern)
-            accounts = accounts[message.offset:message.offset+message.limit]
+            if message.limit == -1:
+                accounts = accounts[message.offset:]
+            else:
+                accounts = accounts[message.offset:message.offset+message.limit]
             response = message.pack_return(accounts)
             sock.send(response)
 
@@ -98,7 +102,7 @@ class ChatServer:
         elif message.type == MessageType.SEND_MESSAGE:
             recipient, content = message.receiver, message.content
             sender_id = self.client_sessions[sock]
-            message = Message(self.next_message_id, self.account_manager.get_user(sender_id).name, content)
+            message = Message(self.next_message_id, sender_id, content)
             self.next_message_id += 1
 
             # See if any clients are connected as the recipient

@@ -4,7 +4,7 @@ from typing import List
 @dataclass
 class Message:
     id: int
-    sender: str
+    sender: int
     content: str
 
 @dataclass
@@ -18,8 +18,12 @@ class User:
         self.message_queue.append(message)
 
     def pop_unread_messages(self, num_messages: int) -> List[Message]:
-        messages = self.message_queue[:num_messages]
-        self.message_queue = self.message_queue[num_messages:]
+        if num_messages < 0:
+            messages = self.message_queue
+            self.message_queue = []
+        else:
+            messages = self.message_queue[:num_messages]
+            self.message_queue = self.message_queue[num_messages:]
         self.read_mailbox.extend(messages)
         return messages
 
@@ -27,7 +31,11 @@ class User:
         return len(self.message_queue)
 
     def get_read_messages(self, offset: int, num_messages: int) -> List[Message]:
-        return self.read_mailbox[-num_messages-offset:-offset]
+        n = len(self.read_mailbox)
+        if num_messages < 0:
+            return self.read_mailbox[:n-offset]
+        else:
+            return self.read_mailbox[n-num_messages-offset:n-offset]
 
     def delete_messages(self, message_ids: List[int]):
         for id in message_ids:

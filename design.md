@@ -54,6 +54,7 @@ Since messages have a unique id that is purely incrementing, we can also order m
 `Login(name: str, password: str) -> Optional[str]`:
 
 `ListUsers(pattern: str, offset: int, limit: int) -> List[Tuple[int, str]]`:
+- Takes in a wildcard pattern and returns a list of users that match the pattern. The `offset` and `limit` parameters are for pagination. `limit` can be `-1` to return all users after `offset`.
 
 `GetUserFromId(user_id: int) -> str`:
 

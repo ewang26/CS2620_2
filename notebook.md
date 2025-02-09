@@ -1,5 +1,11 @@
 # Engineering Notebook
 
+### 2/9/25
+
+- Finished implementation tests; caught a few bugs around the methods that fetch a limited number of elements, but nothing major. Also turns out password hashing is a bit slow, added as a TODO for later.
+
+- Started implementing server tests for each possible message. Not comprehensive, but they give confidence that the main functionality is working.
+
 ### 2/8/25
 
 - Went between a few protocol designs that could be extended to allow both our custom and json protocol. Finally landed on a design where we have a class per message type, since that is what is extended between the protocols.
