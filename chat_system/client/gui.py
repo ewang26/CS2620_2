@@ -1,30 +1,44 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from typing import Callable, Optional
+from tkinter import ttk, scrolledtext, messagebox
+from typing import Callable, List, Optional
 import threading
 from queue import Queue
 
 class ChatGUI:
-    def __init__(self, 
+    def __init__(self,
                  on_login: Callable[[str, str], None],
                  on_create_account: Callable[[str, str], None],
                  on_send_message: Callable[[str, str], None],
-                 on_list_accounts: Callable[[Optional[str]], None]):
+                 on_list_accounts: Callable[[str, int, int], None],
+                 on_delete_messages: Callable[[List[int]], None],
+                 on_delete_account: Callable[[], None],
+                 on_view_history: Callable[[int, int], None],
+                 on_pop_messages: Callable[[int], None]):
         
         self.root = tk.Tk()
         self.root.title("Chat Client")
         self.message_queue = Queue()
         
+        # Store callbacks
         self.on_login = on_login
         self.on_create_account = on_create_account
         self.on_send_message = on_send_message
         self.on_list_accounts = on_list_accounts
+        self.on_delete_messages = on_delete_messages
+        self.on_delete_account = on_delete_account
+        self.on_view_history = on_view_history
+        self.on_pop_messages = on_pop_messages
+        
+        # State variables
+        self.current_page = 0
+        self.page_size = 10
+        self.selected_messages = set()
         
         self._create_widgets()
         self._start_message_thread()
     
     def _create_widgets(self):
-        # login frame
+        # Login frame
         self.login_frame = ttk.LabelFrame(self.root, text="Login/Create Account")
         self.login_frame.pack(padx=10, pady=5, fill=tk.X)
         
@@ -41,43 +55,79 @@ class ChatGUI:
         ttk.Button(self.login_frame, text="Create Account", 
                   command=self._handle_create_account).grid(row=2, column=1, padx=5, pady=5)
         
-        # chat frame
-        self.chat_frame = ttk.LabelFrame(self.root, text="Chat")
-        self.chat_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        # Unread messages frame
+        self.unread_frame = ttk.LabelFrame(self.root, text="Unread Messages")
+        self.unread_frame.pack(padx=10, pady=5, fill=tk.X)
         
-        self.chat_text = tk.Text(self.chat_frame, height=20, width=50)
-        self.chat_text.pack(padx=5, pady=5, fill=tk.BOTH, expand=True)
+        self.unread_label = ttk.Label(self.unread_frame, text="Unread messages: 0")
+        self.unread_label.pack(side=tk.LEFT, padx=5, pady=5)
         
-        # message frame
-        self.message_frame = ttk.Frame(self.chat_frame)
-        self.message_frame.pack(fill=tk.X, padx=5, pady=5)
+        ttk.Button(self.unread_frame, text="Pop Messages",
+                  command=self._handle_pop_messages).pack(side=tk.RIGHT, padx=5, pady=5)
+        self.pop_count = ttk.Spinbox(self.unread_frame, from_=1, to=100, width=5)
+        self.pop_count.pack(side=tk.RIGHT, padx=5, pady=5)
         
-        ttk.Label(self.message_frame, text="To:").pack(side=tk.LEFT, padx=5)
-        self.recipient_entry = ttk.Entry(self.message_frame, width=15)
+        # Message list frame
+        self.message_frame = ttk.LabelFrame(self.root, text="Messages")
+        self.message_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+        
+        # Treeview for messages
+        columns = ("id", "sender", "content")
+        self.message_tree = ttk.Treeview(self.message_frame, columns=columns, show="headings")
+        self.message_tree.heading("id", text="ID")
+        self.message_tree.heading("sender", text="From")
+        self.message_tree.heading("content", text="Message")
+        self.message_tree.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+        self.message_tree.bind("<<TreeviewSelect>>", self._on_message_select)
+        
+        # Message controls
+        self.message_controls = ttk.Frame(self.message_frame)
+        self.message_controls.pack(fill=tk.X, padx=5, pady=5)
+        
+        ttk.Button(self.message_controls, text="Delete Selected",
+                  command=self._handle_delete_messages).pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.message_controls, text="View History",
+                  command=self._handle_view_history).pack(side=tk.LEFT, padx=5)
+        
+        # Send message frame
+        self.send_frame = ttk.LabelFrame(self.root, text="Send Message")
+        self.send_frame.pack(padx=10, pady=5, fill=tk.X)
+        
+        ttk.Label(self.send_frame, text="To:").pack(side=tk.LEFT, padx=5)
+        self.recipient_entry = ttk.Entry(self.send_frame, width=20)
         self.recipient_entry.pack(side=tk.LEFT, padx=5)
         
-        self.message_entry = ttk.Entry(self.message_frame)
+        ttk.Label(self.send_frame, text="Message:").pack(side=tk.LEFT, padx=5)
+        self.message_entry = ttk.Entry(self.send_frame)
         self.message_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
-        ttk.Button(self.message_frame, text="Send", 
-                  command=self._handle_send).pack(side=tk.LEFT, padx=5)
+        ttk.Button(self.send_frame, text="Send",
+                  command=self._handle_send).pack(side=tk.RIGHT, padx=5)
         
-        #account list frame
-        self.list_frame = ttk.LabelFrame(self.root, text="List Accounts")
-        self.list_frame.pack(padx=10, pady=5, fill=tk.X)
+        # User list frame
+        self.user_frame = ttk.LabelFrame(self.root, text="User List")
+        self.user_frame.pack(padx=10, pady=5, fill=tk.X)
         
-        self.pattern_entry = ttk.Entry(self.list_frame)
-        self.pattern_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5, pady=5)
+        ttk.Label(self.user_frame, text="Pattern:").pack(side=tk.LEFT, padx=5)
+        self.pattern_entry = ttk.Entry(self.user_frame)
+        self.pattern_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=5)
         
-        ttk.Button(self.list_frame, text="List", 
-                  command=self._handle_list).pack(side=tk.LEFT, padx=5, pady=5)
-    
+        ttk.Button(self.user_frame, text="Search",
+                  command=self._handle_list_users).pack(side=tk.RIGHT, padx=5)
+        
+        # Account management
+        self.account_frame = ttk.Frame(self.root)
+        self.account_frame.pack(padx=10, pady=5, fill=tk.X)
+        
+        ttk.Button(self.account_frame, text="Delete Account",
+                  command=self._handle_delete_account).pack(side=tk.RIGHT, padx=5)
+
     def _handle_login(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
         if username and password:
             self.on_login(username, password)
-    
+            
     def _handle_create_account(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
@@ -91,14 +141,64 @@ class ChatGUI:
             self.on_send_message(recipient, message)
             self.message_entry.delete(0, tk.END)
     
-    def _handle_list(self):
-        pattern = self.pattern_entry.get()
-        self.on_list_accounts(pattern if pattern else None)
+    def _handle_list_users(self):
+        pattern = self.pattern_entry.get() or "*"
+        self.on_list_accounts(pattern, self.current_page * self.page_size, self.page_size)
+    
+    def _handle_delete_messages(self):
+        if self.selected_messages:
+            self.on_delete_messages(list(self.selected_messages))
+            self.selected_messages.clear()
+    
+    def _handle_view_history(self):
+        self.on_view_history(self.current_page * self.page_size, self.page_size)
+    
+    def _handle_delete_account(self):
+        if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete your account?"):
+            self.on_delete_account()
+    
+    def _handle_pop_messages(self):
+        try:
+            count = int(self.pop_count.get())
+            self.on_pop_messages(count)
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid number")
+    
+    def _on_message_select(self, event):
+        selection = self.message_tree.selection()
+        self.selected_messages = {int(self.message_tree.item(item)["values"][0]) for item in selection}
     
     def display_message(self, message: str):
-        """Display a message in the chat window."""
-        self.message_queue.put(message)
+        """Display a system message."""
+        messagebox.showinfo("Message", message)
     
+    def update_unread_count(self, count: int):
+        """Update the unread message count display."""
+        self.unread_label.config(text=f"Unread messages: {count}")
+    
+    def display_messages(self, messages: List[tuple]):
+        """Display messages in the message tree."""
+        self.message_tree.delete(*self.message_tree.get_children())
+        for msg_id, sender, content in messages:
+            self.message_tree.insert("", tk.END, values=(msg_id, sender, content))
+    
+    def display_users(self, users: List[tuple]):
+        """Display the list of users in a popup window."""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("User List")
+        
+        tree = ttk.Treeview(dialog, columns=("id", "name"), show="headings")
+        tree.heading("id", text="ID")
+        tree.heading("name", text="Username")
+        tree.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
+        
+        for user_id, username in users:
+            tree.insert("", tk.END, values=(user_id, username))
+    
+    def start(self):
+        """Start the GUI main loop."""
+        self.root.mainloop()
+
     def _start_message_thread(self):
         """Start a thread to process messages from the queue."""
         def process_messages():
@@ -108,8 +208,4 @@ class ChatGUI:
                 self.chat_text.see(tk.END)
         
         thread = threading.Thread(target=process_messages, daemon=True)
-        thread.start()
-    
-    def run(self):
-        """Start the GUI event loop."""
-        self.root.mainloop() 
+        thread.start() 
