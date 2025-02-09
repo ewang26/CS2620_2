@@ -53,7 +53,7 @@ Since messages have a unique id that is purely incrementing, we can also order m
 
 `Login(name: str, password: str) -> Optional[str]`:
 
-`ListUsers(pattern: str, page: int) -> List[Tuple[int, str]]`:
+`ListUsers(pattern: str, offset: int, limit: int) -> List[Tuple[int, str]]`:
 
 `GetUserFromId(user_id: int) -> str`:
 
@@ -67,7 +67,7 @@ Since messages have a unique id that is purely incrementing, we can also order m
 `PopUnreadMessages(num_messages: int) -> List[Message]`:
 - Pops the first `num_messages` messages from the unread queue. Can pass `-1` to pop all messages.
 
-`GetReadMessages(num_messages: int) -> List[Message]`:
+`GetReadMessages(offset: int, num_messages: int) -> List[Message]`:
 
 `DeleteMessages(message_ids: List[int]) -> None`:
 
