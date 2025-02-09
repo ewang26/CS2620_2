@@ -8,30 +8,32 @@ A user can do the following tasks:
 - Provide a wildcard pattern and get a list of users matching it
   - Potentially do pagination, if there are a lot of users that match
 - Send a message to a single user
-- Read currently unread messages
-  - Again may need to do pagination
+- Pop messages from an unread message queue.
+  - User can specify how many messages to pop
 - Read all received messages
   - Again may need to do pagination
 - Delete a (set of) message(s)
 - Delete an account
   - Any delivered messages from this user should not be deleted
 
+Additionally, if a user is currently logged in and they receive a message, the server should notify the client. This way, the client can pop the message from the unread queue.
+
 ## Server state
-At a high level, the server should maintain a list of `User`s. Each user then has an `unread_mailbox` and `read_mailbox` of `Message`s. Sending messages to a user will add a message to their `unread_mailbox`, and deleting messages will move them to the `read_mailbox`.
+At a high level, the server should maintain a list of `User`s. Each user then has an `message_queue` and `read_mailbox` of `Message`s. Sending messages to a user will add a message to their `message_queue`, and the user can then pop messages from this queue. When a user pops a message, it should be moved to their `read_mailbox`.
 
 To help id users and messages, each user and message should have a unique UUID. We can keep a global state of `nextUserId` and `nextMessageId` to help generate these. This means we can also store users and messages in a dictionary, with the UUID as the key.
 
 Concretely, we should have
 ```python
 class User:
-    name: str
     id: int
-    mailbox: Dict[int, Message]
+    name: str
+    message_queue: List[Message]
+    read_mailbox: List[Message]
 
 class Message:
     id: int
     sender: int
-    receiver: int
     content: str
 ```
 
@@ -39,29 +41,37 @@ When a client logs in, the server should map the client's socket to its user id.
 
 Note that because many clients can be connected at once (potentially with one user on multiple clients as well), there may be concurrent accesses to the server state. We can either use a lock to protect the state, or have the server be single-threaded and use a queue to handle requests. **We chose the second option for simplicity, and because we don't expect a high load on the server.**
 
+## Client state
+
+To help reduce the number of requests to the server, the client should cache all the `User -> id` mappings that it knows about. This way, when the client wants to send a message to a user, it can just use the id it has cached. 
+
+Since messages have a unique id that is purely incrementing, we can also order messages by their id. This way, the client can display all messages in chronological order.
+
 ## Interfaces
 
-`CreateAccount(name: str, password: str) -> bool`:
+`CreateAccount(name: str, password: str) -> Optional[str]`:
 
-`Login(name: str, password: str) -> int`:
+`Login(name: str, password: str) -> Optional[str]`:
 
 `ListUsers(pattern: str, page: int) -> List[Tuple[int, str]]`:
 
 `GetUserFromId(user_id: int) -> str`:
 
-`SendMessage(receiver: int, content: str) -> bool`:
+`SendMessage(receiver: int, content: str) -> None`:
+
+`ReceivedMessage(new_message: Message) -> None`:
+- Sent from the server to the client, whenever the client receives a new message.
 
 `GetNumberOfUnreadMessages() -> int`:
 
-`GetUnreadMessages(page: int) -> List[Message]`:
+`PopUnreadMessages(num_messages: int) -> List[Message]`:
+- Pops the first `num_messages` messages from the unread queue. Can pass `-1` to pop all messages.
 
-`MarkMessageAsRead(message_id: int) -> bool`:
+`GetReadMessages(num_messages: int) -> List[Message]`:
 
-`GetReadMessages(page: int) -> List[Message]`:
+`DeleteMessages(message_ids: List[int]) -> None`:
 
-`DeleteMessages(message_ids: List[int]) -> bool`:
-
-`DeleteAccount() -> bool`:
+`DeleteAccount() -> None`:
 
 ## Wire Protocol
 
@@ -72,6 +82,7 @@ The arguments and return values are encoded into bytes as follows:
 - `int`: 4-byte integer
 - `List[...]`: 4-byte length, followed by the encoded elements
 - `Tuple[...]`: sequentially encode the elements
+- `Optional[...]`: 1-byte integer, either a 0 for None or 1 for Some. If it is Some, then follow by encoding the value.
 - `bool`: 1-byte integer, 0 for False, 1 for True
-- `Message`: sequentially encode `id`, `sender`, and `content`. The `receiver` is not needed, since it is the user calling the interface.
+- `Message`: sequentially encode `id`, `sender`, and `content`.
 
