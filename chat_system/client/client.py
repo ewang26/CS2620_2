@@ -2,16 +2,17 @@ import socket
 import threading
 import json
 from typing import Optional, Dict, Any, List
+from ..common.config import DEFAULT_HOST, DEFAULT_PORT
 from ..common.protocol.custom_protocol import Protocol, MessageType
 from .gui import ChatGUI
 
 class ChatClient:
-    def __init__(self, host: str = 'localhost', port: int = 8888):
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
         self.host = host
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.logged_in = False
-        
+
         self.gui = ChatGUI(
             on_login=self.login,
             on_create_account=self.create_account,
@@ -22,16 +23,7 @@ class ChatClient:
             on_view_history=self.get_read_messages,
             on_pop_messages=self.pop_unread_messages
         )
-    
-    @staticmethod
-    def load_config(config_path: str = "config.json") -> Dict[str, Any]:
-        """Load connection settings from config file."""
-        try:
-            with open(config_path) as f:
-                return json.load(f)
-        except FileNotFoundError:
-            return {"host": "localhost", "port": 8888}
-    
+
     def connect(self) -> bool:
         """Connect to the server."""
         try:
@@ -44,27 +36,27 @@ class ChatClient:
         except Exception as e:
             self.gui.display_message(f"Connection failed: {e}")
             return False
-    
+
     def start(self):
         """Start the client."""
         if self.connect():
             self.gui.start()
-    
+
     def create_account(self, username: str, password: str):
         """Send create account request."""
         message = {"t": "create_account", "u": username, "p": password}
         self._send(message)
-    
+
     def login(self, username: str, password: str):
         """Send login request."""
         message = {"t": "login", "u": username, "p": password}
         self._send(message)
-    
+
     def list_accounts(self, pattern: str, offset: int, limit: int):
         """Send list accounts request."""
         message = {"t": "list_users", "p": pattern, "o": offset, "l": limit}
         self._send(message)
-    
+
     def send_message(self, recipient: str, content: str):
         """Send a message to another user."""
         if not self.logged_in:
@@ -72,7 +64,7 @@ class ChatClient:
             return
         message = {"t": "send_message", "r": recipient, "c": content}
         self._send(message)
-    
+
     def pop_unread_messages(self, count: int):
         """Pop unread messages."""
         if not self.logged_in:
@@ -80,7 +72,7 @@ class ChatClient:
             return
         message = {"t": "pop_unread", "c": count}
         self._send(message)
-    
+
     def get_read_messages(self, offset: int, limit: int):
         """Get read messages."""
         if not self.logged_in:
@@ -88,7 +80,7 @@ class ChatClient:
             return
         message = {"t": "get_read", "o": offset, "l": limit}
         self._send(message)
-    
+
     def delete_messages(self, message_ids: List[int]):
         """Delete messages."""
         if not self.logged_in:
@@ -96,7 +88,7 @@ class ChatClient:
             return
         message = {"t": "delete_messages", "ids": message_ids}
         self._send(message)
-    
+
     def delete_account(self):
         """Delete account."""
         if not self.logged_in:
@@ -105,14 +97,14 @@ class ChatClient:
         message = {"t": "delete_account"}
         self._send(message)
         self.logged_in = False
-    
+
     def _send(self, message: Dict):
         """Send a message to the server."""
         try:
             self.socket.send(json.dumps(message).encode('utf-8'))
         except Exception as e:
             self.gui.display_message(f"Failed to send message: {e}")
-    
+
     def _receive_messages(self):
         """Receive messages from the server."""
         while True:
@@ -120,22 +112,22 @@ class ChatClient:
                 data = self.socket.recv(4096)
                 if not data:
                     break
-                
+
                 response = json.loads(data.decode('utf-8'))
                 self._handle_response(response)
-                
+
             except Exception as e:
                 self.gui.display_message(f"Connection error: {e}")
                 break
-        
+
         self.socket.close()
-    
+
     def _handle_response(self, response: Dict):
         """Handle server responses."""
         if "error" in response:
             self.gui.display_message(response["error"])
             return
-            
+
         msg_type = response.get("t")
         if msg_type == "login":
             self.logged_in = True
@@ -149,8 +141,3 @@ class ChatClient:
         elif msg_type == "new_message":
             self.gui.update_unread_count(response["unread"])
             self.gui.display_message(f"New message from {response['sender']}")
-
-if __name__ == "__main__":
-    # TODO: Read port from cmd line args
-    client = ChatClient()
-    client.run()

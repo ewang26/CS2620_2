@@ -2,6 +2,7 @@ import sys
 import socket
 import selectors
 
+from chat_system.common.config import DEFAULT_HOST, DEFAULT_PORT
 from ..common.protocol.custom_protocol import CustomProtocol
 from ..common.protocol.json_protocol import JSONProtocol
 from ..common.protocol.protocol import *
@@ -9,10 +10,10 @@ from .account_manager import AccountManager
 from ..common.user import Message
 
 class ChatServer:
-    def __init__(self, host: str = 'localhost', port: int = 8888, custom_protocol = True):
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, use_custom_protocol = True):
         self.host = host
         self.port = port
-        self.protocol: Protocol = CustomProtocol() if custom_protocol else JSONProtocol()
+        self.protocol: Protocol = CustomProtocol() if use_custom_protocol else JSONProtocol()
         self.selector = selectors.DefaultSelector()
         self.account_manager = AccountManager()
         self.client_sessions: Dict[socket.socket, int] = {}  # socket -> user id
@@ -145,11 +146,3 @@ class ChatServer:
             self.client_sessions.pop(sock)
         self.selector.unregister(sock)
         sock.close()
-
-if __name__ == "__main__":
-    if len(sys.argv) < 3:
-        print("Usage: python server.py <host> <port>")
-        sys.exit(1)
-
-    server = ChatServer(host=sys.argv[1], port=int(sys.argv[2]), custom_protocol=(len(sys.argv) < 4 or sys.argv[3] != "json"))
-    server.start()

@@ -9,7 +9,7 @@ class MockSocket:
 
 class TestServer(unittest.TestCase):
     def setUp(self):
-        self.server = ChatServer(custom_protocol=False)
+        self.server = ChatServer(use_custom_protocol=False)
         self.socket = MockSocket()
 
         self.server.close_connection = MagicMock()
