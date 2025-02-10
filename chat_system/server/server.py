@@ -53,7 +53,8 @@ class ChatServer:
                 return
 
             message_type = self.protocol.get_message_type(data)
-            message = self.protocol.message_class(message_type).unpack(data)
+            print(f"Received message of type {message_type}, {data}")
+            message = self.protocol.message_class(message_type).unpack_server(data)
             self.process_message(sock, message)
 
         except Exception as e:
@@ -65,7 +66,7 @@ class ChatServer:
         if message.type == MessageType.CREATE_ACCOUNT:
             username, password = message.name, message.password
             success = self.account_manager.create_account(username, password)
-            response = message.pack_return(success)
+            response = message.pack_client(success)
             sock.send(response)
 
         elif message.type == MessageType.LOGIN:
@@ -73,9 +74,9 @@ class ChatServer:
             user = self.account_manager.login(username, password)
             if user:
                 self.client_sessions[sock] = user.id
-                response = message.pack_return(None)
+                response = message.pack_client(None)
             else:
-                response = message.pack_return("Invalid username or password")
+                response = message.pack_client("Invalid username or password")
             sock.send(response)
 
         elif self.client_sessions[sock] == -1:
@@ -88,17 +89,17 @@ class ChatServer:
                 accounts = accounts[message.offset:]
             else:
                 accounts = accounts[message.offset:message.offset+message.limit]
-            response = message.pack_return(accounts)
+            response = message.pack_client(accounts)
             sock.send(response)
 
         elif message.type == MessageType.GET_USER_FROM_ID:
             user = self.account_manager.get_user(message.user_id)
-            response = message.pack_return(user.name)
+            response = message.pack_client(user.name)
             sock.send(response)
 
         elif message.type == MessageType.DELETE_ACCOUNT:
             self.account_manager.delete_account(self.client_sessions[sock])
-            self.close_connection(sock)
+            self.client_sessions.pop(sock)
 
         elif message.type == MessageType.SEND_MESSAGE:
             recipient, content = message.receiver, message.content
@@ -111,26 +112,26 @@ class ChatServer:
             for client_sock, user_id in self.client_sessions.items():
                 if user_id == recipient:
                     response = (self.protocol.message_class(MessageType.RECEIVED_MESSAGE))(message)
-                    client_sock.send(response.pack())
+                    client_sock.send(response.pack_client(None))
                     read = True
             if not read:
                 self.account_manager.get_user(recipient).add_message(message)
 
         elif message.type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
             user = self.account_manager.get_user(self.client_sessions[sock])
-            response = message.pack_return(user.get_number_of_unread_messages())
+            response = message.pack_client(user.get_number_of_unread_messages())
             sock.send(response)
 
         elif message.type == MessageType.POP_UNREAD_MESSAGES:
             user = self.account_manager.get_user(self.client_sessions[sock])
             messages = user.pop_unread_messages(message.num_messages)
-            response = message.pack_return(messages)
+            response = message.pack_client(messages)
             sock.send(response)
 
         elif message.type == MessageType.GET_READ_MESSAGES:
             user = self.account_manager.get_user(self.client_sessions[sock])
             messages = user.get_read_messages(message.offset, message.num_messages)
-            response = message.pack_return(messages)
+            response = message.pack_client(messages)
             sock.send(response)
 
         elif message.type == MessageType.DELETE_MESSAGES:

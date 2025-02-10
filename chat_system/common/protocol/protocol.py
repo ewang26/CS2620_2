@@ -25,18 +25,22 @@ class MessageType(IntEnum):
 class ProtocolMessage:
     type: MessageType
 
-    def pack(self) -> bytes:
+    def pack_server(self) -> bytes:
+        """ Packs the message to be sent to the server. """
         pass
 
-    def pack_return(self, data: any) -> bytes:
+    def pack_client(self, data: any) -> bytes:
+        """ Packs the message to be sent to the client. """
         pass
 
     @classmethod
-    def unpack(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> any:
+        """ Unpacks the message sent to the server. """
         pass
 
     @classmethod
-    def unpack_return(self, data: bytes) -> any:
+    def unpack_client(cls, data: bytes) -> any:
+        """ Unpacks the message sent to the client. """
         pass
 
 

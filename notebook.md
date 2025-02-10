@@ -1,6 +1,8 @@
 # Engineering Notebook
 
 ### 2/10/25
+- Instead of thinking in terms of packing message and return value, we should refer to them as packing client/server messages. This helps unify the interfaces of messages sent in either direction. 
+
 - 🎉successful client server login🎉, protocol does actually work :D 
 
 - When thinking about multithreading the client, realized we would want one thread for reading + one thread for writing. This implies that **return messages should be typed as well**, since we need to know what to do with the response. This is a change from the current design, where we currently assume the client knows how to pair requests with responses.

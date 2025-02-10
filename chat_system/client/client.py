@@ -1,16 +1,22 @@
 import socket
 import threading
-import json
-from typing import Optional, Dict, Any, List
+from typing import Any, List, Dict
 from ..common.config import DEFAULT_HOST, DEFAULT_PORT
-from ..common.protocol.custom_protocol import Protocol, MessageType
+from ..common.protocol.protocol import Protocol, ProtocolMessage, MessageType
+from ..common.protocol.custom_protocol import CustomProtocol
+from ..common.protocol.json_protocol import JSONProtocol
 from .gui import ChatGUI
 
 class ChatClient:
-    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT):
+    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, use_custom_protocol: bool = True):
         self.host = host
         self.port = port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.socket_send_lock = threading.Lock()
+        self.protocol: Protocol = CustomProtocol() if use_custom_protocol else JSONProtocol()
+
+        self.user_cache: Dict[str, int] = {}
+
         self.logged_in = False
 
         self.gui = ChatGUI(
@@ -44,17 +50,17 @@ class ChatClient:
 
     def create_account(self, username: str, password: str):
         """Send create account request."""
-        message = {"t": "create_account", "u": username, "p": password}
+        message = (self.protocol.message_class(MessageType.CREATE_ACCOUNT))(name=username, password=password)
         self._send(message)
 
     def login(self, username: str, password: str):
         """Send login request."""
-        message = {"t": "login", "u": username, "p": password}
+        message = (self.protocol.message_class(MessageType.LOGIN))(name=username, password=password)
         self._send(message)
 
     def list_accounts(self, pattern: str, offset: int, limit: int):
         """Send list accounts request."""
-        message = {"t": "list_users", "p": pattern, "o": offset, "l": limit}
+        message = (self.protocol.message_class(MessageType.LIST_USERS))(pattern=pattern, offset=offset, limit=limit)
         self._send(message)
 
     def send_message(self, recipient: str, content: str):
@@ -62,7 +68,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = {"t": "send_message", "r": recipient, "c": content}
+        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(receiver=self.user_cache[recipient], content=content)
         self._send(message)
 
     def pop_unread_messages(self, count: int):
@@ -70,7 +76,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = {"t": "pop_unread", "c": count}
+        message = (self.protocol.message_class(MessageType.POP_UNREAD_MESSAGES))(num_messages=count)
         self._send(message)
 
     def get_read_messages(self, offset: int, limit: int):
@@ -78,7 +84,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = {"t": "get_read", "o": offset, "l": limit}
+        message = (self.protocol.message_class(MessageType.GET_READ_MESSAGES))(offset=offset, limit=limit)
         self._send(message)
 
     def delete_messages(self, message_ids: List[int]):
@@ -86,7 +92,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = {"t": "delete_messages", "ids": message_ids}
+        message = (self.protocol.message_class(MessageType.DELETE_MESSAGES))(message_ids=message_ids)
         self._send(message)
 
     def delete_account(self):
@@ -94,14 +100,15 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = {"t": "delete_account"}
+        message = (self.protocol.message_class(MessageType.DELETE_ACCOUNT))()
         self._send(message)
         self.logged_in = False
 
-    def _send(self, message: Dict):
+    def _send(self, message: ProtocolMessage):
         """Send a message to the server."""
         try:
-            self.socket.send(json.dumps(message).encode('utf-8'))
+            with self.socket_send_lock:
+                self.socket.send(message.pack_server())
         except Exception as e:
             self.gui.display_message(f"Failed to send message: {e}")
 
@@ -113,8 +120,10 @@ class ChatClient:
                 if not data:
                     break
 
-                response = json.loads(data.decode('utf-8'))
-                self._handle_response(response)
+                message_type = self.protocol.get_message_type(data)
+                print(f"Received message: {message_type}, {data}")
+                ret = self.protocol.message_class(message_type).unpack_client(data)
+                self._handle_response(message_type, ret)
 
             except Exception as e:
                 self.gui.display_message(f"Connection error: {e}")
@@ -122,22 +131,38 @@ class ChatClient:
 
         self.socket.close()
 
-    def _handle_response(self, response: Dict):
+    def _handle_response(self, msg_type: MessageType, response: Any):
         """Handle server responses."""
-        if "error" in response:
-            self.gui.display_message(response["error"])
-            return
 
-        msg_type = response.get("t")
-        if msg_type == "login":
-            self.logged_in = True
-            self.gui.update_unread_count(response.get("unread", 0))
-        elif msg_type == "list_users":
-            self.gui.display_users(response["users"])
-        elif msg_type == "messages":
-            self.gui.display_messages(response["messages"])
-        elif msg_type == "unread_count":
-            self.gui.update_unread_count(response["count"])
-        elif msg_type == "new_message":
-            self.gui.update_unread_count(response["unread"])
-            self.gui.display_message(f"New message from {response['sender']}")
+        if msg_type == MessageType.CREATE_ACCOUNT:
+            if response is not None:
+                self.gui.display_message(response)
+            else:
+                self.gui.display_message("Account created successfully, please log in")
+
+        elif msg_type == MessageType.LOGIN:
+            if response is not None:
+                self.gui.display_message(response)
+            else:
+                self.logged_in = True
+                self.gui.display_message("Logged in successfully")
+
+        elif msg_type == MessageType.LIST_USERS:
+            self.gui.display_users(response)
+
+        elif msg_type == MessageType.GET_USER_FROM_ID:
+            pass
+
+        elif msg_type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
+            self.gui.update_unread_count(response)
+
+        elif msg_type == MessageType.POP_UNREAD_MESSAGES:
+            self.gui.display_messages(response)
+
+        elif msg_type == MessageType.GET_READ_MESSAGES:
+            self.gui.display_messages(response)
+
+        elif msg_type == MessageType.RECEIVED_MESSAGE:
+            msg = response.new_message
+            self.gui.display_message(f"New message from {msg.sender}")
+            self.gui.display_messages([msg])
