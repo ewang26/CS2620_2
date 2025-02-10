@@ -1,5 +1,10 @@
 # Engineering Notebook
 
+### 2/10/25
+- 🎉successful client server login🎉, protocol does actually work :D 
+
+- When thinking about multithreading the client, realized we would want one thread for reading + one thread for writing. This implies that **return messages should be typed as well**, since we need to know what to do with the response. This is a change from the current design, where we currently assume the client knows how to pair requests with responses.
+
 ### 2/9/25
 
 - Finished implementation tests; caught a few bugs around the methods that fetch a limited number of elements, but nothing major. Also turns out password hashing is a bit slow, added as a TODO for later.

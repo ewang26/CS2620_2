@@ -7,6 +7,9 @@ class MockSocket:
     def __init__(self):
         self.send = MagicMock()
 
+def ret_string(message_type, response):
+    return f'{{"t": {message_type}, "r": {response}}}'.encode('utf-8')
+
 class TestServer(unittest.TestCase):
     def setUp(self):
         self.server = ChatServer(use_custom_protocol=False)
@@ -20,20 +23,20 @@ class TestServer(unittest.TestCase):
     def test_create_account(self):
         """Test account creation."""
         self.send_message(JSON_CreateAccountMessage("test", "password"))
-        self.socket.send.assert_called_with('{"r": null}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.CREATE_ACCOUNT, 'null'))
 
         self.send_message(JSON_CreateAccountMessage("test", "different"))
-        self.socket.send.assert_called_with('{"r": "Username already taken"}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.CREATE_ACCOUNT, '"Username already taken"'))
 
     def test_login(self):
         """Test login functionality."""
         self.send_message(JSON_LoginMessage("test", "password"))
-        self.socket.send.assert_called_with('{"r": "Invalid username or password"}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LOGIN, '"Invalid username or password"'))
 
         self.send_message(JSON_CreateAccountMessage("test", "password"))
 
         self.send_message(JSON_LoginMessage("test", "password"))
-        self.socket.send.assert_called_with('{"r": null}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LOGIN, 'null'))
 
     def test_list_users(self):
         """Test user listing."""
@@ -43,19 +46,19 @@ class TestServer(unittest.TestCase):
 
         # Test wildcard
         self.send_message(JSON_ListUsersMessage("*", 0, -1))
-        self.socket.send.assert_called_with('{"r": [[0, "test"], [1, "alt"]]}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LIST_USERS, '[[0, "test"], [1, "alt"]]'))
 
         # Test limit
         self.send_message(JSON_ListUsersMessage("*", 1, 1))
-        self.socket.send.assert_called_with('{"r": [[1, "alt"]]}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LIST_USERS, '[[1, "alt"]]'))
 
         # Test pattern
         self.send_message(JSON_ListUsersMessage("alt", 0, -1))
-        self.socket.send.assert_called_with('{"r": [[1, "alt"]]}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LIST_USERS, '[[1, "alt"]]'))
 
         # Test empty list
         self.send_message(JSON_ListUsersMessage("none", 0, -1))
-        self.socket.send.assert_called_with('{"r": []}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.LIST_USERS, '[]'))
 
     def test_get_user(self):
         """Test getting user from id."""
@@ -64,10 +67,10 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("test", "password"))
 
         self.send_message(JSON_GetUserFromIdMessage(0))
-        self.socket.send.assert_called_with('{"r": "test"}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.GET_USER_FROM_ID, '"test"'))
 
         self.send_message(JSON_GetUserFromIdMessage(1))
-        self.socket.send.assert_called_with('{"r": "alt"}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.GET_USER_FROM_ID, '"alt"'))
 
     def test_delete_account(self):
         """Test account deletion."""
@@ -105,7 +108,7 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("test", "password"))
 
         self.send_message(JSON_GetNumberOfUnreadMessagesMessage())
-        self.socket.send.assert_called_with('{"r": 0}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES, '0'))
 
         self.send_message(JSON_SendMessageMessage(1, "content"))
         self.send_message(JSON_SendMessageMessage(1, "content2"))
@@ -113,7 +116,7 @@ class TestServer(unittest.TestCase):
         alt_socket = MockSocket()
         self.send_message(JSON_LoginMessage("alt", "password"), alt_socket)
         self.send_message(JSON_GetNumberOfUnreadMessagesMessage(), alt_socket)
-        alt_socket.send.assert_called_with('{"r": 2}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(ret_string(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES, '2'))
 
     def test_pop_unread_messages(self):
         """Test popping unread messages."""
@@ -123,7 +126,7 @@ class TestServer(unittest.TestCase):
 
         # Test popping when there are no messages
         self.send_message(JSON_PopUnreadMessagesMessage(1))
-        self.socket.send.assert_called_with('{"r": []}'.encode('utf-8'))
+        self.socket.send.assert_called_with(ret_string(MessageType.POP_UNREAD_MESSAGES, '[]'))
 
         self.send_message(JSON_SendMessageMessage(1, "content"))
         self.send_message(JSON_SendMessageMessage(1, "content2"))
@@ -133,9 +136,9 @@ class TestServer(unittest.TestCase):
         alt_socket = MockSocket()
         self.send_message(JSON_LoginMessage("alt", "password"), alt_socket)
         self.send_message(JSON_PopUnreadMessagesMessage(1), alt_socket)
-        alt_socket.send.assert_called_with('{"r": [{"i": 0, "s": 0, "c": "content"}]}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(ret_string(MessageType.POP_UNREAD_MESSAGES, '[{"i": 0, "s": 0, "c": "content"}]'))
         self.send_message(JSON_PopUnreadMessagesMessage(-1), alt_socket)
-        alt_socket.send.assert_called_with('{"r": [{"i": 1, "s": 0, "c": "content2"}, {"i": 2, "s": 0, "c": "content3"}]}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(ret_string(MessageType.POP_UNREAD_MESSAGES, '[{"i": 1, "s": 0, "c": "content2"}, {"i": 2, "s": 0, "c": "content3"}]'))
 
         # Make sure messages are removed from queue
         self.assertEqual(len(self.server.account_manager.get_user(1).message_queue), 0)
@@ -155,10 +158,10 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_PopUnreadMessagesMessage(-1), alt_socket)
 
         self.send_message(JSON_GetReadMessagesMessage(0, 1), alt_socket)
-        alt_socket.send.assert_called_with('{"r": [{"i": 2, "s": 0, "c": "content3"}]}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(ret_string(MessageType.GET_READ_MESSAGES, '[{"i": 2, "s": 0, "c": "content3"}]'))
 
         self.send_message(JSON_GetReadMessagesMessage(1, -1), alt_socket)
-        alt_socket.send.assert_called_with('{"r": [{"i": 0, "s": 0, "c": "content"}, {"i": 1, "s": 0, "c": "content2"}]}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(ret_string(MessageType.GET_READ_MESSAGES, '[{"i": 0, "s": 0, "c": "content"}, {"i": 1, "s": 0, "c": "content2"}]'))
 
     def test_delete_messages(self):
         """Test deleting messages."""

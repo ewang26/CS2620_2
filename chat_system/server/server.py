@@ -1,4 +1,3 @@
-import sys
 import socket
 import selectors
 
@@ -53,7 +52,8 @@ class ChatServer:
                 self.close_connection(sock)
                 return
 
-            message_type, message = self.protocol.parse_message(data)
+            message_type = self.protocol.get_message_type(data)
+            message = self.protocol.message_class(message_type).unpack(data)
             self.process_message(sock, message)
 
         except Exception as e:

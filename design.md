@@ -76,7 +76,7 @@ Since messages have a unique id that is purely incrementing, we can also order m
 
 ## Wire Protocol
 
-For our custom protocol, we can use the fact that each interface has a constant type for fields and return values. When a client is calling an interface, it will first send a 1-byte request type, followed by the arguments for the interface. The server will then respond with the return value. The server does not need to identify the return type, since each client is only calling one interface at a time.
+For our custom protocol, we can use the fact that each interface has a constant type for fields and return values. When a client is calling an interface, it will first send a 1-byte request type, followed by the arguments for the interface. The server will then respond with the return value. This return value should be typed as well, since the client cannot easily pair requests with responses due to multithreading.
 
 The arguments and return values are encoded into bytes as follows:
 - `str`: 4-byte length, followed by the string
