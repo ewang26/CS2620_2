@@ -1,7 +1,6 @@
-from dataclasses import dataclass
 import struct
-from typing import Optional, List, Self, Any, Dict, Type, Tuple
-from .protocol import MessageType, Protocol, ProtocolMessage, CreateAccountMessage, LoginMessage, ListUsersMessage, GetUserFromIdMessage, DeleteAccountMessage, SendMessageMessage, ReceivedMessageMessage, GetNumberOfUnreadMessagesMessage, PopUnreadMessagesMessage, GetReadMessagesMessage, DeleteMessagesMessage
+from typing import Optional, Tuple
+from .protocol import *
 from ..user import Message, User
 
 def encode_str(s: str) -> bytes:
@@ -102,19 +101,40 @@ class Custom_LoginMessage(LoginMessage):
             return error
         return None
 
+class Custom_LogoutMessage(LogoutMessage):
+    def pack_server(self) -> bytes:
+        """Pack message for server: type + name + password"""
+        return struct.pack('!B', self.type.value)
+
+    def pack_client(self, data: Optional[str]) -> bytes:
+        """Pack response for client: type + has_error + [error_message]"""
+        pass
+
+    @classmethod
+    def unpack_server(cls, data: bytes) -> Self:
+        """Unpack server message: skip type, then name + password"""
+        return cls()
+
+    @classmethod
+    def unpack_client(cls, data: bytes) -> None:
+        """Unpack client response: skip type, then has_error + [error_message]"""
+        pass
+
 class Custom_ListUsersMessage(ListUsersMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type + pattern + offset + limit"""
-        return (struct.pack('!B', self.type.value) + 
-                encode_str(self.pattern) + 
-                encode_int(self.offset) + 
+        return (struct.pack('!B', self.type.value) +
+                encode_str(self.pattern) +
+                encode_int(self.offset) +
                 encode_int(self.limit))
 
-    def pack_client(self, data: List[str]) -> bytes:
+    def pack_client(self, data: List[User]) -> bytes:
         """Pack response for client: type + count + usernames"""
-        result = struct.pack('!B', self.type.value) + encode_int(len(data))
-        for username in data:
-            result += encode_str(username)
+        result = struct.pack('!B', self.type.value)
+        result += encode_int(len(data))
+        for user in data:
+            result += encode_int(user.id)
+            result += encode_str(user.name)
         return result
 
     @classmethod
@@ -126,13 +146,14 @@ class Custom_ListUsersMessage(ListUsersMessage):
         return cls(pattern, list_offset, limit)
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[str]:
+    def unpack_client(cls, data: bytes) -> List[Tuple[int, str]]:
         """Unpack client response: skip type, then count + usernames"""
         count, offset = decode_int(data, 1)  # Skip message type
         usernames = []
         for _ in range(count):
+            user_id, offset = decode_int(data, offset)
             username, offset = decode_str(data, offset)
-            usernames.append(username)
+            usernames.append((user_id, username))
         return usernames
 
 class Custom_GetUserFromIdMessage(GetUserFromIdMessage):
@@ -178,8 +199,8 @@ class Custom_DeleteAccountMessage(DeleteAccountMessage):
 class Custom_SendMessageMessage(SendMessageMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type + receiver_id + content"""
-        return (struct.pack('!B', self.type.value) + 
-                encode_int(self.receiver) + 
+        return (struct.pack('!B', self.type.value) +
+                encode_int(self.receiver) +
                 encode_str(self.content))
 
     def pack_client(self, data: None) -> bytes:
@@ -270,8 +291,8 @@ class Custom_PopUnreadMessagesMessage(PopUnreadMessagesMessage):
 class Custom_GetReadMessagesMessage(GetReadMessagesMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type + offset + num_messages"""
-        return (struct.pack('!B', self.type.value) + 
-                encode_int(self.offset) + 
+        return (struct.pack('!B', self.type.value) +
+                encode_int(self.offset) +
                 encode_int(self.num_messages))
 
     def pack_client(self, data: List[Message]) -> bytes:
@@ -330,6 +351,7 @@ class CustomProtocol(Protocol):
     message_classes: Dict[MessageType, Type[ProtocolMessage]] = {
         MessageType.CREATE_ACCOUNT: Custom_CreateAccountMessage,
         MessageType.LOGIN: Custom_LoginMessage,
+        MessageType.LOGOUT: Custom_LogoutMessage,
         MessageType.LIST_USERS: Custom_ListUsersMessage,
         MessageType.GET_USER_FROM_ID: Custom_GetUserFromIdMessage,
         MessageType.DELETE_ACCOUNT: Custom_DeleteAccountMessage,
@@ -355,41 +377,3 @@ class CustomProtocol(Protocol):
         if msg_type not in self.message_classes:
             raise ValueError(f"Unsupported message type: {msg_type}")
         return self.message_classes[msg_type]
-
-    # @staticmethod
-    # def pack_message(msg_type: MessageType, payload: bytes) -> bytes:
-    #     """Pack a message into bytes according to protocol."""
-    #     payload_len = len(payload)
-    #     header = struct.pack('!BL', msg_type, payload_len)
-    #     return header + payload
-    #
-    # @staticmethod
-    # def unpack_message(data: bytes) -> Message:
-    #     """Unpack bytes into a Message object."""
-    #     msg_type, payload_len = struct.unpack('!BL', data[:5])
-    #     payload = data[5:5+payload_len]
-    #     return Message(MessageType(msg_type), payload_len, payload)
-    #
-    # @staticmethod
-    # def create_account_request(username: str, password: str) -> bytes:
-    #     """Create an account creation request."""
-    #     payload = f"{username}:{password}".encode()
-    #     return Protocol.pack_message(MessageType.CREATE_ACCOUNT, payload)
-    #
-    # @staticmethod
-    # def login_request(username: str, password: str) -> bytes:
-    #     """Create a login request."""
-    #     payload = f"{username}:{password}".encode()
-    #     return Protocol.pack_message(MessageType.LOGIN, payload)
-    #
-    # @staticmethod
-    # def list_accounts_request(pattern: Optional[str] = None) -> bytes:
-    #     """Create a list accounts request."""
-    #     payload = pattern.encode() if pattern else b''
-    #     return Protocol.pack_message(MessageType.LIST_ACCOUNTS, payload)
-    #
-    # @staticmethod
-    # def send_message_request(recipient: str, content: str) -> bytes:
-    #     """Create a message send request."""
-    #     payload = f"{recipient}:{content}".encode()
-    #     return Protocol.pack_message(MessageType.SEND_MESSAGE, payload)

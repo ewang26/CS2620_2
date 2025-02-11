@@ -1,5 +1,5 @@
 {
   "host": "localhost",
   "port": 8888,
-  "use_custom_protocol": false
+  "use_custom_protocol": true
 }
