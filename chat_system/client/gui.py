@@ -4,9 +4,13 @@ from typing import Callable, List, Optional
 import threading
 from queue import Queue
 
+from chat_system.common.user import Message
+
+
 class ChatGUI:
     def __init__(self,
                  on_login: Callable[[str, str], None],
+                 on_logout: Callable[[], None],
                  on_create_account: Callable[[str, str], None],
                  on_send_message: Callable[[str, str], None],
                  on_list_accounts: Callable[[str, int, int], None],
@@ -21,6 +25,7 @@ class ChatGUI:
 
         # Store callbacks
         self.on_login = on_login
+        self.on_logout = on_logout
         self.on_create_account = on_create_account
         self.on_send_message = on_send_message
         self.on_list_accounts = on_list_accounts
@@ -121,12 +126,18 @@ class ChatGUI:
 
         ttk.Button(self.account_frame, text="Delete Account",
                   command=self._handle_delete_account).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(self.account_frame, text="Logout",
+                   command=self._handle_logout).pack(side=tk.RIGHT, padx=5)
 
     def _handle_login(self):
         username = self.username_entry.get()
         password = self.password_entry.get()
         if username and password:
             self.on_login(username, password)
+
+    def _handle_logout(self):
+        if messagebox.askyesno("Confirm Logout", "Are you sure you want to logout?"):
+            self.on_logout()
 
     def _handle_create_account(self):
         username = self.username_entry.get()
@@ -176,11 +187,11 @@ class ChatGUI:
         """Update the unread message count display."""
         self.unread_label.config(text=f"Unread messages: {count}")
 
-    def display_messages(self, messages: List[tuple]):
+    def display_messages(self, messages: List[Message]):
         """Display messages in the message tree."""
         self.message_tree.delete(*self.message_tree.get_children())
-        for msg_id, sender, content in messages:
-            self.message_tree.insert("", tk.END, values=(msg_id, sender, content))
+        for msg in messages:
+            self.message_tree.insert("", tk.END, values=(msg.id, msg.sender, msg.content))
 
     def display_users(self, users: List[tuple]):
         """Display the list of users in a popup window."""

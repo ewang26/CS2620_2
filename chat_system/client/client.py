@@ -21,6 +21,7 @@ class ChatClient:
 
         self.gui = ChatGUI(
             on_login=self.login,
+            on_logout=self.logout,
             on_create_account=self.create_account,
             on_send_message=self.send_message,
             on_list_accounts=self.list_accounts,
@@ -57,6 +58,12 @@ class ChatClient:
         """Send login request."""
         message = (self.protocol.message_class(MessageType.LOGIN))(name=username, password=password)
         self._send(message)
+
+    def logout(self):
+        """Send logout request."""
+        self._send((self.protocol.message_class(MessageType.LOGOUT))())
+        self.logged_in = False
+        self.gui.display_message("Logged out")
 
     def list_accounts(self, pattern: str, offset: int, limit: int):
         """Send list accounts request."""

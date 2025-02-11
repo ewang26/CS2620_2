@@ -53,8 +53,8 @@ class ChatServer:
                 return
 
             message_type = self.protocol.get_message_type(data)
-            print(f"Received message of type {message_type}, {data}")
             message = self.protocol.message_class(message_type).unpack_server(data)
+            print(f"Received message of type {message_type}, {data} -> {message}")
             self.process_message(sock, message)
 
         except Exception as e:
@@ -82,9 +82,14 @@ class ChatServer:
         elif self.client_sessions[sock] == -1:
             print("Message received before login:", message.type)
 
+        elif message.type == MessageType.LOGOUT:
+            self.client_sessions[sock] = -1
+
         elif message.type == MessageType.LIST_USERS:
             pattern = message.pattern
             accounts = self.account_manager.list_accounts(pattern)
+            # Cap to valid range
+            message.offset = max(0, message.offset)
             if message.limit == -1:
                 accounts = accounts[message.offset:]
             else:
@@ -99,7 +104,7 @@ class ChatServer:
 
         elif message.type == MessageType.DELETE_ACCOUNT:
             self.account_manager.delete_account(self.client_sessions[sock])
-            self.client_sessions.pop(sock)
+            self.client_sessions[sock] = -1
 
         elif message.type == MessageType.SEND_MESSAGE:
             recipient, content = message.receiver, message.content
@@ -114,7 +119,9 @@ class ChatServer:
                     response = (self.protocol.message_class(MessageType.RECEIVED_MESSAGE))(message)
                     client_sock.send(response.pack_client(None))
                     read = True
-            if not read:
+            if read:
+                self.account_manager.get_user(recipient).add_read_message(message)
+            else:
                 self.account_manager.get_user(recipient).add_message(message)
 
         elif message.type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:

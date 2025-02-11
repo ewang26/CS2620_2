@@ -9,17 +9,18 @@ class MessageType(IntEnum):
     # Account operations
     CREATE_ACCOUNT = 1
     LOGIN = 2
-    LIST_USERS = 3
-    GET_USER_FROM_ID = 4
-    DELETE_ACCOUNT = 5
+    LOGOUT = 3
+    LIST_USERS = 4
+    GET_USER_FROM_ID = 5
+    DELETE_ACCOUNT = 6
 
     # Message operations
-    SEND_MESSAGE = 6
-    RECEIVED_MESSAGE = 7
-    GET_NUMBER_OF_UNREAD_MESSAGES = 8
-    POP_UNREAD_MESSAGES = 9
-    GET_READ_MESSAGES = 10
-    DELETE_MESSAGES = 11
+    SEND_MESSAGE = 7
+    RECEIVED_MESSAGE = 8
+    GET_NUMBER_OF_UNREAD_MESSAGES = 9
+    POP_UNREAD_MESSAGES = 10
+    GET_READ_MESSAGES = 11
+    DELETE_MESSAGES = 12
 
 
 class ProtocolMessage:
@@ -57,6 +58,10 @@ class LoginMessage(ProtocolMessage):
     name: str
     password: str
 
+@dataclass
+class LogoutMessage(ProtocolMessage):
+    type = MessageType.LOGOUT
+    pass
 
 @dataclass
 class ListUsersMessage(ProtocolMessage):

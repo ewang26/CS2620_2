@@ -17,6 +17,9 @@ class User:
     def add_message(self, message: Message):
         self.message_queue.append(message)
 
+    def add_read_message(self, message: Message):
+        self.read_mailbox.append(message)
+
     def pop_unread_messages(self, num_messages: int) -> List[Message]:
         if num_messages < 0:
             messages = self.message_queue
@@ -32,6 +35,9 @@ class User:
 
     def get_read_messages(self, offset: int, num_messages: int) -> List[Message]:
         n = len(self.read_mailbox)
+        # Cap to make sure we stay within bounds
+        offset = max(0, min(n, offset))
+        num_messages = min(num_messages, n-offset)
         if num_messages < 0:
             return self.read_mailbox[:n-offset]
         else:

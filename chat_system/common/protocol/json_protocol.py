@@ -48,6 +48,22 @@ class JSON_LoginMessage(LoginMessage):
         return json.loads(data.decode('utf-8'))["r"]
 
 
+class JSON_LogoutMessage(LogoutMessage):
+    def pack_server(self) -> bytes:
+        return json.dumps({"t": self.type}).encode('utf-8')
+
+    def pack_client(self, data: any) -> bytes:
+        pass
+
+    @classmethod
+    def unpack_server(cls, data: bytes) -> Self:
+        return cls()
+
+    @classmethod
+    def unpack_client(cls, data: bytes) -> any:
+        pass
+
+
 class JSON_ListUsersMessage(ListUsersMessage):
     def pack_server(self) -> bytes:
         return json.dumps({"t": self.type, "p": self.pattern, "o": self.offset, "l": self.limit}).encode('utf-8')
@@ -208,6 +224,7 @@ class JSONProtocol(Protocol):
     message_classes: Dict[MessageType, Type[ProtocolMessage]] = {
         MessageType.CREATE_ACCOUNT: JSON_CreateAccountMessage,
         MessageType.LOGIN: JSON_LoginMessage,
+        MessageType.LOGOUT: JSON_LogoutMessage,
         MessageType.LIST_USERS: JSON_ListUsersMessage,
         MessageType.GET_USER_FROM_ID: JSON_GetUserFromIdMessage,
         MessageType.DELETE_ACCOUNT: JSON_DeleteAccountMessage,
