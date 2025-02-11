@@ -1,23 +1,19 @@
 import socket
 import threading
 from typing import Any, List, Dict
-from ..common.config import DEFAULT_HOST, DEFAULT_PORT
+from ..common.config import ConnectionSettings
 from ..common.protocol.protocol import Protocol, ProtocolMessage, MessageType
 from ..common.protocol.custom_protocol import CustomProtocol
 from ..common.protocol.json_protocol import JSONProtocol
 from .gui import ChatGUI
 
 class ChatClient:
-    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, use_custom_protocol: bool = True):
-        self.host = host
-        self.port = port
+    def __init__(self, config: ConnectionSettings = ConnectionSettings()):
+        self.host = config.host
+        self.port = config.port
         self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.socket_send_lock = threading.Lock()
-        self.protocol: Protocol = CustomProtocol() if use_custom_protocol else JSONProtocol()
-
-        self.user_cache: Dict[str, int] = {}
-
-        self.logged_in = False
+        self.protocol: Protocol = CustomProtocol() if config.use_custom_protocol else JSONProtocol()
 
         self.gui = ChatGUI(
             on_login=self.login,
@@ -62,8 +58,6 @@ class ChatClient:
     def logout(self):
         """Send logout request."""
         self._send((self.protocol.message_class(MessageType.LOGOUT))())
-        self.logged_in = False
-        self.gui.display_message("Logged out")
 
     def list_accounts(self, pattern: str, offset: int, limit: int):
         """Send list accounts request."""
@@ -72,44 +66,28 @@ class ChatClient:
 
     def send_message(self, recipient: str, content: str):
         """Send a message to another user."""
-        if not self.logged_in:
-            self.gui.display_message("Please log in first")
-            return
         message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(receiver=int(recipient), content=content)
         self._send(message)
 
     def pop_unread_messages(self, count: int):
         """Pop unread messages."""
-        if not self.logged_in:
-            self.gui.display_message("Please log in first")
-            return
         message = (self.protocol.message_class(MessageType.POP_UNREAD_MESSAGES))(num_messages=count)
         self._send(message)
 
     def get_read_messages(self, offset: int, limit: int):
         """Get read messages."""
-        if not self.logged_in:
-            self.gui.display_message("Please log in first")
-            return
         message = (self.protocol.message_class(MessageType.GET_READ_MESSAGES))(offset=offset, num_messages=limit)
         self._send(message)
 
     def delete_messages(self, message_ids: List[int]):
         """Delete messages."""
-        if not self.logged_in:
-            self.gui.display_message("Please log in first")
-            return
         message = (self.protocol.message_class(MessageType.DELETE_MESSAGES))(message_ids=message_ids)
         self._send(message)
 
     def delete_account(self):
         """Delete account."""
-        if not self.logged_in:
-            self.gui.display_message("Please log in first")
-            return
         message = (self.protocol.message_class(MessageType.DELETE_ACCOUNT))()
         self._send(message)
-        self.logged_in = False
 
     def _send(self, message: ProtocolMessage):
         """Send a message to the server."""
@@ -150,7 +128,6 @@ class ChatClient:
             if response is not None:
                 self.gui.display_message(response)
             else:
-                self.logged_in = True
                 self.gui.show_main_widgets()
                 self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
 

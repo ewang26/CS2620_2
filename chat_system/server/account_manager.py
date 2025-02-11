@@ -1,13 +1,47 @@
 from typing import Dict, Optional, List, Tuple
+import base64
 import re
 from ..common.security import Security
-from ..common.user import User
+from ..common.user import User, Message
 
 class AccountManager:
     def __init__(self):
         self.accounts: Dict[int, User] = {}  # user id -> User
-        self.login_info: Dict[int, Tuple[str, str]] = {}  # user id -> (password hash, salt)
+        self.login_info: Dict[int, Tuple[bytes, bytes]] = {}  # user id -> (password hash, salt)
         self.next_user_id = 0
+
+    def get_state(self):
+        """Save the account manager state to a file."""
+        state = {}
+        for user_id, user in self.accounts.items():
+            password_hash, salt = self.login_info[user_id]
+            state[str(user_id)] = {
+                "name": user.name,
+                "password_hash": base64.b64encode(password_hash).decode('ascii'),
+                "salt": base64.b64encode(salt).decode('ascii'),
+                "message_queue": [(m.id, m.sender, m.content) for m in user.message_queue],
+                "read_mailbox": [(m.id, m.sender, m.content) for m in user.read_mailbox]
+            }
+        state["next_user_id"] = self.next_user_id
+        return state
+
+    def load_state(self, state: Dict):
+        """Load the account manager state from a file."""
+        self.accounts.clear()
+        self.login_info.clear()
+
+        self.next_user_id = state["next_user_id"]
+        state.pop("next_user_id")
+
+        for user_id_str, user_state in state.items():
+            user_id = int(user_id_str)
+            password_hash = base64.b64decode(user_state["password_hash"].encode('ascii'))
+            salt = base64.b64decode(user_state["salt"].encode('ascii'))
+            messages = [Message(*m) for m in user_state["message_queue"]]
+            received_messages = [Message(*m) for m in user_state["read_mailbox"]]
+            user = User(user_id, user_state["name"], messages, received_messages)
+            self.accounts[user_id] = user
+            self.login_info[user_id] = (password_hash, salt)
 
     def get_user(self, user_id: int) -> Optional[User]:
         """Get a user by id."""

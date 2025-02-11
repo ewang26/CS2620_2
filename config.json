@@ -1,5 +1,6 @@
 {
   "host": "localhost",
   "port": 8888,
-  "use_custom_protocol": true
+  "use_custom_protocol": true,
+  "server_data": "data.json"
 }

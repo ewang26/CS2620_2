@@ -1,22 +1,51 @@
-import socket
+import json
 import selectors
+import signal
+import socket
 
-from chat_system.common.config import DEFAULT_HOST, DEFAULT_PORT
+from chat_system.common.config import ConnectionSettings
+from .account_manager import AccountManager
 from ..common.protocol.custom_protocol import CustomProtocol
 from ..common.protocol.json_protocol import JSONProtocol
 from ..common.protocol.protocol import *
-from .account_manager import AccountManager
 from ..common.user import Message
 
+
 class ChatServer:
-    def __init__(self, host: str = DEFAULT_HOST, port: int = DEFAULT_PORT, use_custom_protocol = True):
-        self.host = host
-        self.port = port
-        self.protocol: Protocol = CustomProtocol() if use_custom_protocol else JSONProtocol()
-        self.selector = selectors.DefaultSelector()
+    def __init__(self, config: ConnectionSettings = ConnectionSettings()):
+        self.host = config.host
+        self.port = config.port
+        self.protocol: Protocol = CustomProtocol() if config.use_custom_protocol else JSONProtocol()
         self.account_manager = AccountManager()
         self.client_sessions: Dict[socket.socket, int] = {}  # socket -> user id
         self.next_message_id = 0
+
+        self.running = True
+        self.server_path = config.server_data_path
+        self.selector = selectors.DefaultSelector()
+
+        # Register signal handlers to save state when shutting down
+        signal.signal(signal.SIGINT, self.handle_shutdown)
+        signal.signal(signal.SIGTERM, self.handle_shutdown)
+
+    def save_state(self):
+        """Save the server state to a file."""
+        with open(self.server_path, "w") as f:
+            state = {
+                "account_manager": self.account_manager.get_state(),
+                "next_message_id": self.next_message_id
+            }
+            f.write(json.dumps(state))
+
+    def load_state(self):
+        """Load the server state from a file."""
+        try:
+            with open(self.server_path) as f:
+                state = json.load(f)
+                self.account_manager.load_state(state["account_manager"])
+                self.next_message_id = state["next_message_id"]
+        except FileNotFoundError:
+            print("No server state found, starting fresh")
 
     def start(self):
         """Start the chat server."""
@@ -30,11 +59,18 @@ class ChatServer:
 
         print(f"Server started on {self.host}:{self.port}")
 
-        while True:
+        while self.running:
             events = self.selector.select(timeout=1)
             for key, mask in events:
                 callback = key.data
                 callback(key.fileobj)
+
+        print(f"Saving server state to {self.server_path}")
+        self.save_state()
+
+    def handle_shutdown(self, signum, frame):
+        print("Server shutting down...")
+        self.running = False
 
     def accept_connection(self, sock: socket.socket):
         """Accept a new client connection."""
@@ -93,7 +129,7 @@ class ChatServer:
             if message.limit == -1:
                 accounts = accounts[message.offset:]
             else:
-                accounts = accounts[message.offset:message.offset+message.limit]
+                accounts = accounts[message.offset:message.offset + message.limit]
             response = message.pack_client(accounts)
             sock.send(response)
 
