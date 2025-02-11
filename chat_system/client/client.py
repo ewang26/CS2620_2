@@ -75,7 +75,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(receiver=self.user_cache[recipient], content=content)
+        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(receiver=int(recipient), content=content)
         self._send(message)
 
     def pop_unread_messages(self, count: int):
@@ -91,7 +91,7 @@ class ChatClient:
         if not self.logged_in:
             self.gui.display_message("Please log in first")
             return
-        message = (self.protocol.message_class(MessageType.GET_READ_MESSAGES))(offset=offset, limit=limit)
+        message = (self.protocol.message_class(MessageType.GET_READ_MESSAGES))(offset=offset, num_messages=limit)
         self._send(message)
 
     def delete_messages(self, message_ids: List[int]):
@@ -131,7 +131,6 @@ class ChatClient:
                 print(f"Received message: {message_type}, {data}")
                 ret = self.protocol.message_class(message_type).unpack_client(data)
                 self._handle_response(message_type, ret)
-
             except Exception as e:
                 self.gui.display_message(f"Connection error: {e}")
                 break
@@ -152,7 +151,8 @@ class ChatClient:
                 self.gui.display_message(response)
             else:
                 self.logged_in = True
-                self.gui.display_message("Logged in successfully")
+                self.gui.show_main_widgets()
+                self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
 
         elif msg_type == MessageType.LIST_USERS:
             self.gui.display_users(response)
@@ -165,6 +165,7 @@ class ChatClient:
 
         elif msg_type == MessageType.POP_UNREAD_MESSAGES:
             self.gui.display_messages(response)
+            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
 
         elif msg_type == MessageType.GET_READ_MESSAGES:
             self.gui.display_messages(response)

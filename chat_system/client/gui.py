@@ -21,6 +21,7 @@ class ChatGUI:
 
         self.root = tk.Tk()
         self.root.title("Chat Client")
+        self.root_frame = ttk.Frame(self.root)
         self.message_queue = Queue()
 
         # Store callbacks
@@ -39,12 +40,15 @@ class ChatGUI:
         self.page_size = 10
         self.selected_messages = set()
 
-        self._create_widgets()
+        self.show_login_widgets()
         self._start_message_thread()
 
-    def _create_widgets(self):
-        # Login frame
-        self.login_frame = ttk.LabelFrame(self.root, text="Login/Create Account")
+    def show_login_widgets(self):
+        # Clear current window
+        self.root_frame.destroy()
+        self.root_frame = ttk.Frame(self.root)
+
+        self.login_frame = ttk.LabelFrame(self.root_frame, text="Login/Create Account")
         self.login_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Label(self.login_frame, text="Username:").grid(row=0, column=0, padx=5, pady=5)
@@ -56,12 +60,20 @@ class ChatGUI:
         self.password_entry.grid(row=1, column=1, padx=5, pady=5)
 
         ttk.Button(self.login_frame, text="Login",
-                  command=self._handle_login).grid(row=2, column=0, padx=5, pady=5)
+                   command=self._handle_login).grid(row=2, column=0, padx=5, pady=5)
         ttk.Button(self.login_frame, text="Create Account",
-                  command=self._handle_create_account).grid(row=2, column=1, padx=5, pady=5)
+                   command=self._handle_create_account).grid(row=2, column=1, padx=5, pady=5)
+
+        # Add frame once we're done constructing
+        self.root_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
+
+    def show_main_widgets(self):
+        # Clear current window
+        self.root_frame.destroy()
+        self.root_frame = ttk.Frame(self.root)
 
         # Unread messages frame
-        self.unread_frame = ttk.LabelFrame(self.root, text="Unread Messages")
+        self.unread_frame = ttk.LabelFrame(self.root_frame, text="Unread Messages")
         self.unread_frame.pack(padx=10, pady=5, fill=tk.X)
 
         self.unread_label = ttk.Label(self.unread_frame, text="Unread messages: 0")
@@ -73,7 +85,7 @@ class ChatGUI:
         self.pop_count.pack(side=tk.RIGHT, padx=5, pady=5)
 
         # Message list frame
-        self.message_frame = ttk.LabelFrame(self.root, text="Messages")
+        self.message_frame = ttk.LabelFrame(self.root_frame, text="Messages")
         self.message_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
 
         # Treeview for messages
@@ -95,7 +107,7 @@ class ChatGUI:
                   command=self._handle_view_history).pack(side=tk.LEFT, padx=5)
 
         # Send message frame
-        self.send_frame = ttk.LabelFrame(self.root, text="Send Message")
+        self.send_frame = ttk.LabelFrame(self.root_frame, text="Send Message")
         self.send_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Label(self.send_frame, text="To:").pack(side=tk.LEFT, padx=5)
@@ -110,7 +122,7 @@ class ChatGUI:
                   command=self._handle_send).pack(side=tk.RIGHT, padx=5)
 
         # User list frame
-        self.user_frame = ttk.LabelFrame(self.root, text="User List")
+        self.user_frame = ttk.LabelFrame(self.root_frame, text="User List")
         self.user_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Label(self.user_frame, text="Pattern:").pack(side=tk.LEFT, padx=5)
@@ -121,13 +133,16 @@ class ChatGUI:
                   command=self._handle_list_users).pack(side=tk.RIGHT, padx=5)
 
         # Account management
-        self.account_frame = ttk.Frame(self.root)
+        self.account_frame = ttk.Frame(self.root_frame)
         self.account_frame.pack(padx=10, pady=5, fill=tk.X)
 
         ttk.Button(self.account_frame, text="Delete Account",
                   command=self._handle_delete_account).pack(side=tk.RIGHT, padx=5)
         ttk.Button(self.account_frame, text="Logout",
                    command=self._handle_logout).pack(side=tk.RIGHT, padx=5)
+
+        # Add frame once we're done constructing
+        self.root_frame.pack(padx=10, pady=5, fill=tk.BOTH, expand=True)
 
     def _handle_login(self):
         username = self.username_entry.get()
@@ -138,6 +153,7 @@ class ChatGUI:
     def _handle_logout(self):
         if messagebox.askyesno("Confirm Logout", "Are you sure you want to logout?"):
             self.on_logout()
+            self.show_login_widgets()
 
     def _handle_create_account(self):
         username = self.username_entry.get()
@@ -167,6 +183,7 @@ class ChatGUI:
     def _handle_delete_account(self):
         if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete your account?"):
             self.on_delete_account()
+            self.show_login_widgets()
 
     def _handle_pop_messages(self):
         try:
