@@ -1,6 +1,9 @@
 # Engineering Notebook
 
 ### 2/10/25
+
+- Ran into a small bug where immediately delivered messages were not being added to the read mailbox. Should add this as part of a test case.
+
 - Instead of thinking in terms of packing message and return value, we should refer to them as packing client/server messages. This helps unify the interfaces of messages sent in either direction. 
 
 - 🎉successful client server login🎉, protocol does actually work :D 

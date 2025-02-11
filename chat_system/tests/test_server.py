@@ -15,8 +15,6 @@ class TestServer(unittest.TestCase):
         self.server = ChatServer(use_custom_protocol=False)
         self.socket = MockSocket()
 
-        self.server.close_connection = MagicMock()
-
     def send_message(self, message, socket=None):
         self.server.process_message(self.socket if socket is None else socket, message)
 
@@ -37,6 +35,15 @@ class TestServer(unittest.TestCase):
 
         self.send_message(JSON_LoginMessage("test", "password"))
         self.socket.send.assert_called_with(ret_string(MessageType.LOGIN, 'null'))
+
+    def test_logout(self):
+        """Test account logout."""
+        self.send_message(JSON_CreateAccountMessage("test", "password"))
+        self.send_message(JSON_LoginMessage("test", "password"))
+
+        self.send_message(JSON_LogoutMessage())
+        self.assertEqual(self.server.client_sessions[self.socket], -1)
+
 
     def test_list_users(self):
         """Test user listing."""
@@ -78,7 +85,7 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("test", "password"))
 
         self.send_message(JSON_DeleteAccountMessage())
-        self.server.close_connection.assert_called_with(self.socket)
+        self.assertEqual(self.server.client_sessions[self.socket], -1)
         self.assertEqual(len(self.server.account_manager.accounts), 0)
 
     def test_send_message(self):
@@ -100,6 +107,8 @@ class TestServer(unittest.TestCase):
 
         self.send_message(JSON_SendMessageMessage(1, "content2"))
         alt_socket.send.assert_called_with('{"t": 7, "n": {"i": 1, "s": 0, "c": "content2"}}'.encode('utf-8'))
+        # Message should be added to the read mailbox since user is logged in
+        self.assertEqual(len(self.server.account_manager.get_user(1).read_mailbox), 1)
 
     def test_get_number_of_unread_messages(self):
         """Test getting unread messages."""
