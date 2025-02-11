@@ -2,6 +2,12 @@
 
 ### 2/10/25
 
+- While working on the wire protocol, we replaced the old protocol methods in custom_protocol.py with new custom_message classes. Specifically, pack_message and unpack_message are replaced by the pack_server/pack_client/unpack_server/unpack_client methods in each Custom_Message class. And the request methods are replaced as follows:
+create_account_request -> Custom_CreateAccountMessage
+login_request -> Custom_LoginMessage
+list_accounts_request -> Custom_ListUsersMessage
+send_message_request -> Custom_SendMessageMessage.
+
 - Ran into a small bug where immediately delivered messages were not being added to the read mailbox. Should add this as part of a test case.
 
 - Instead of thinking in terms of packing message and return value, we should refer to them as packing client/server messages. This helps unify the interfaces of messages sent in either direction. 
