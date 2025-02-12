@@ -1,5 +1,7 @@
 import unittest
 from unittest.mock import MagicMock
+
+from ..common.config import ConnectionSettings
 from ..server.server import ChatServer
 from ..common.protocol.json_protocol import *
 
@@ -12,7 +14,7 @@ def ret_string(message_type, response):
 
 class TestServer(unittest.TestCase):
     def setUp(self):
-        self.server = ChatServer(use_custom_protocol=False)
+        self.server = ChatServer(ConnectionSettings(use_custom_protocol=False))
         self.socket = MockSocket()
 
     def send_message(self, message, socket=None):
@@ -106,7 +108,7 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("alt", "password"), alt_socket)
 
         self.send_message(JSON_SendMessageMessage(1, "content2"))
-        alt_socket.send.assert_called_with('{"t": 7, "n": {"i": 1, "s": 0, "c": "content2"}}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(f'{{"t": {MessageType.RECEIVED_MESSAGE}, "n": {{"i": 1, "s": 0, "c": "content2"}}}}'.encode('utf-8'))
         # Message should be added to the read mailbox since user is logged in
         self.assertEqual(len(self.server.account_manager.get_user(1).read_mailbox), 1)
 
@@ -134,7 +136,7 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("test", "password"))
 
         # Test popping when there are no messages
-        self.send_message(JSON_PopUnreadMessagesMessage(1))
+        self.send_message(JSON_PopUnreadMessagesMessage(10))
         self.socket.send.assert_called_with(ret_string(MessageType.POP_UNREAD_MESSAGES, '[]'))
 
         self.send_message(JSON_SendMessageMessage(1, "content"))
