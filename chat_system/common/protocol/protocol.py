@@ -86,7 +86,7 @@ class DeleteAccountMessage(ProtocolMessage):
 @dataclass
 class SendMessageMessage(ProtocolMessage):
     type = MessageType.SEND_MESSAGE
-    receiver: int
+    receiver: str
     content: str
 
 

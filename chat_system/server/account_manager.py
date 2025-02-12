@@ -95,3 +95,10 @@ class AccountManager:
         """Delete an account."""
         self.accounts.pop(user_id)
         self.login_info.pop(user_id)
+
+    def get_user_id_by_username(self, username):
+        """Get a user's ID from their username."""
+        for user_id, user_data in self.accounts.items():
+            if user_data['username'] == username:
+                return user_id
+        return None

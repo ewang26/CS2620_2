@@ -198,25 +198,34 @@ class Custom_DeleteAccountMessage(DeleteAccountMessage):
 
 class Custom_SendMessageMessage(SendMessageMessage):
     def pack_server(self) -> bytes:
-        """Pack message for server: type + receiver_id + content"""
-        return (struct.pack('!B', self.type.value) +
-                encode_int(self.receiver) +
+        """Pack message for server: type + recipient_username + content"""
+        return (struct.pack('!B', self.type.value) + 
+                encode_str(self.receiver) +  # Now encoding username string
                 encode_str(self.content))
 
-    def pack_client(self, data: None) -> bytes:
-        """Pack response for client: type only"""
-        return struct.pack('!B', self.type.value)
+    def pack_client(self, data: Optional[str]) -> bytes:
+        """Pack response for client: type + optional error message"""
+        result = struct.pack('!B', self.type.value)
+        if data is not None:  # Error message
+            result += encode_bool(True) + encode_str(data)
+        else:
+            result += encode_bool(False)
+        return result
 
     @classmethod
     def unpack_server(cls, data: bytes) -> Self:
-        """Unpack server message: skip type, then receiver_id + content"""
-        receiver, offset = decode_int(data, 1)  # Skip message type
-        content, _ = decode_str(data, offset)
-        return cls(receiver, content)
+        """Unpack server message: skip type, then recipient_username + content"""
+        recipient, pos = decode_str(data, 1)  # Skip message type
+        content, _ = decode_str(data, pos)
+        return cls(recipient, content)
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> None:
-        """Unpack client response: type only"""
+    def unpack_client(cls, data: bytes) -> Optional[str]:
+        """Unpack client response: skip type, then optional error message"""
+        has_error, pos = decode_bool(data, 1)
+        if has_error:
+            error_msg, _ = decode_str(data, pos)
+            return error_msg
         return None
 
 class Custom_ReceivedMessageMessage(ReceivedMessageMessage):

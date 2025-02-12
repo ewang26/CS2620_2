@@ -64,9 +64,12 @@ class ChatClient:
         message = (self.protocol.message_class(MessageType.LIST_USERS))(pattern=pattern, offset=offset, limit=limit)
         self._send(message)
 
-    def send_message(self, recipient: str, content: str):
-        """Send a message to another user."""
-        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(receiver=int(recipient), content=content)
+    def send_message(self, recipient_username: str, content: str):
+        """Send a message to another user using their username."""
+        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(
+            receiver=recipient_username,  # username instead of ID
+            content=content
+        )
         self._send(message)
 
     def pop_unread_messages(self, count: int):
