@@ -1,5 +1,5 @@
 import json
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple, Any, Union, List
 
 from .protocol import *
 from ..user import User
@@ -171,18 +171,23 @@ class JSON_PopUnreadMessagesMessage(PopUnreadMessagesMessage):
     def pack_server(self) -> bytes:
         return json.dumps({"t": self.type, "n": self.num_messages}).encode('utf-8')
 
-    def pack_client(self, data: List[Message]) -> bytes:
+    def pack_client(self, data: Union[List[Message], str]) -> bytes:
+        if isinstance(data, str):  # Error case
+            return json.dumps({"t": self.type, "r": data, "error": True}).encode('utf-8')
+        # Success case
         messages_json = [message_to_json(m) for m in data]
-        return json.dumps({"t": self.type, "r": messages_json}).encode('utf-8')
+        return json.dumps({"t": self.type, "r": messages_json, "error": False}).encode('utf-8')
 
     @classmethod
     def unpack_server(cls, data: bytes) -> Self:
         return cls(json.loads(data.decode('utf-8'))["n"])
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[Message]:
-        d = json.loads(data.decode('utf-8'))["r"]
-        return [json_to_message(m) for m in d]
+    def unpack_client(cls, data: bytes) -> Union[List[Message], str]:
+        d = json.loads(data.decode('utf-8'))
+        if d.get("error", False):
+            return d["r"]  # Return error message string
+        return [json_to_message(m) for m in d["r"]]  # Return message list
 
 
 class JSON_GetReadMessagesMessage(GetReadMessagesMessage):
