@@ -167,11 +167,8 @@ class ChatServer:
 
         elif message.type == MessageType.POP_UNREAD_MESSAGES:
             user = self.account_manager.get_user(self.client_sessions[sock])
-            if message.num_messages > user.get_number_of_unread_messages():
-                response = message.pack_client("Trying to pop more messages than available")
-            else:
-                messages = user.pop_unread_messages(message.num_messages)
-                response = message.pack_client(messages)
+            messages = user.pop_unread_messages(message.num_messages)
+            response = message.pack_client(messages)
             sock.send(response)
 
         elif message.type == MessageType.GET_READ_MESSAGES:

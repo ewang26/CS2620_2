@@ -25,6 +25,7 @@ class User:
             messages = self.message_queue
             self.message_queue = []
         else:
+            num_messages = min(num_messages, len(self.message_queue))
             messages = self.message_queue[:num_messages]
             self.message_queue = self.message_queue[num_messages:]
         self.read_mailbox.extend(messages)
