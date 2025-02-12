@@ -2,6 +2,8 @@
 
 ### 2/12/25
 
+- Ran into an issue where messages that are sent immediately after each other are received on the same socket poll, but only the first message is processed. To fix this, we need to add some form of message framing to the protocol. 
+
 - Went and got rid of all user ID entirely, now that we're using usernames to send messages.
 
 - Added to our test suite. In particular, we create a password security test that tests empty passwords and long passwords, and makes sure that even if two users use the same passwords, the salts and hashes are different. We also test if the message ordering is preserved through the queue/mailbox system and if passwords can handle edge cases where special characters and Unicode are used.

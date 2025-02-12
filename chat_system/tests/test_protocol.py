@@ -20,14 +20,14 @@ class TestCustomProtocol(unittest.TestCase):
         packed = message.pack_server()
 
         # Unpack and verify
-        unpacked = Custom_CreateAccountMessage.unpack_server(packed)
+        unpacked, _ = Custom_CreateAccountMessage.unpack_server(packed)
         self.assertEqual(unpacked.name, username)
         self.assertEqual(unpacked.password, password)
 
         # Test error response
         error_msg = "Username taken"
         packed_response = message.pack_client(error_msg)
-        unpacked_response = Custom_CreateAccountMessage.unpack_client(packed_response)
+        unpacked_response, _ = Custom_CreateAccountMessage.unpack_client(packed_response)
         self.assertEqual(unpacked_response, error_msg)
 
     def test_login(self):
@@ -40,7 +40,7 @@ class TestCustomProtocol(unittest.TestCase):
         packed = message.pack_server()
 
         # Unpack and verify
-        unpacked = Custom_LoginMessage.unpack_server(packed)
+        unpacked, _ = Custom_LoginMessage.unpack_server(packed)
         self.assertEqual(unpacked.name, username)
         self.assertEqual(unpacked.password, password)
 
@@ -55,7 +55,7 @@ class TestCustomProtocol(unittest.TestCase):
         packed = message.pack_server()
 
         # Unpack and verify
-        unpacked = Custom_ListUsersMessage.unpack_server(packed)
+        unpacked, _ = Custom_ListUsersMessage.unpack_server(packed)
         self.assertEqual(unpacked.pattern, pattern)
         self.assertEqual(unpacked.offset, offset)
         self.assertEqual(unpacked.limit, limit)
@@ -64,5 +64,5 @@ class TestCustomProtocol(unittest.TestCase):
         users = ["user0", "user1", "user2"]
         users_obj = [User(name, [], []) for name in users]
         packed_response = message.pack_client(users_obj)
-        unpacked_response = Custom_ListUsersMessage.unpack_client(packed_response)
+        unpacked_response, _ = Custom_ListUsersMessage.unpack_client(packed_response)
         self.assertEqual(unpacked_response, users)

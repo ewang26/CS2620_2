@@ -1,5 +1,5 @@
 import struct
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Self
 from .protocol import *
 from ..user import Message, User
 
@@ -57,20 +57,20 @@ class Custom_CreateAccountMessage(CreateAccountMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then name + password"""
         name, offset = decode_str(data, 1)  # Skip message type
-        password, _ = decode_str(data, offset)
-        return cls(name, password)
+        password, offset = decode_str(data, offset)
+        return cls(name, password), offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> Optional[str]:
+    def unpack_client(cls, data: bytes) -> Tuple[Optional[str], int]:
         """Unpack client response: skip type, then has_error + [error_message]"""
         has_error, offset = decode_bool(data, 1)  # Skip message type
         if has_error:
-            error, _ = decode_str(data, offset)
-            return error
-        return None
+            error, offset = decode_str(data, offset)
+            return error, offset
+        return None, offset
 
 class Custom_LoginMessage(LoginMessage):
     def pack_server(self) -> bytes:
@@ -86,20 +86,20 @@ class Custom_LoginMessage(LoginMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then name + password"""
         name, offset = decode_str(data, 1)  # Skip message type
-        password, _ = decode_str(data, offset)
-        return cls(name, password)
+        password, offset = decode_str(data, offset)
+        return cls(name, password), offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> Optional[str]:
+    def unpack_client(cls, data: bytes) -> Tuple[Optional[str], int]:
         """Unpack client response: skip type, then has_error + [error_message]"""
         has_error, offset = decode_bool(data, 1)  # Skip message type
         if has_error:
-            error, _ = decode_str(data, offset)
-            return error
-        return None
+            error, offset = decode_str(data, offset)
+            return error, offset
+        return None, offset
 
 class Custom_LogoutMessage(LogoutMessage):
     def pack_server(self) -> bytes:
@@ -111,9 +111,9 @@ class Custom_LogoutMessage(LogoutMessage):
         pass
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then name + password"""
-        return cls()
+        return cls(), 1
 
     @classmethod
     def unpack_client(cls, data: bytes) -> None:
@@ -137,22 +137,22 @@ class Custom_ListUsersMessage(ListUsersMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then pattern + offset + limit"""
         pattern, offset = decode_str(data, 1)  # Skip message type
         list_offset, offset = decode_int(data, offset)
-        limit, _ = decode_int(data, offset)
-        return cls(pattern, list_offset, limit)
+        limit, offset = decode_int(data, offset)
+        return cls(pattern, list_offset, limit), offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[str]:
+    def unpack_client(cls, data: bytes) -> Tuple[List[str], int]:
         """Unpack client response: skip type, then count + usernames"""
         count, offset = decode_int(data, 1)  # Skip message type
         usernames = []
         for _ in range(count):
             username, offset = decode_str(data, offset)
             usernames.append(username)
-        return usernames
+        return usernames, offset
 
 
 class Custom_DeleteAccountMessage(DeleteAccountMessage):
@@ -165,9 +165,9 @@ class Custom_DeleteAccountMessage(DeleteAccountMessage):
         return struct.pack('!B', self.type.value)
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: type only"""
-        return cls()
+        return cls(), 1
 
     @classmethod
     def unpack_client(cls, data: bytes) -> None:
@@ -191,25 +191,25 @@ class Custom_SendMessageMessage(SendMessageMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then recipient_username + content"""
         recipient, pos = decode_str(data, 1)  # Skip message type
-        content, _ = decode_str(data, pos)
-        return cls(recipient, content)
+        content, offset = decode_str(data, pos)
+        return cls(recipient, content), offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> Optional[str]:
+    def unpack_client(cls, data: bytes) -> Tuple[Optional[str], int]:
         """Unpack client response: skip type, then optional error message"""
-        has_error, pos = decode_bool(data, 1)
+        has_error, offset = decode_bool(data, 1)
         if has_error:
-            error_msg, _ = decode_str(data, pos)
-            return error_msg
-        return None
+            error_msg, offset = decode_str(data, offset)
+            return error_msg, offset
+        return None, offset
 
 class Custom_ReceivedMessageMessage(ReceivedMessageMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type + message"""
-        return struct.pack('!B', self.type.value) + encode_message(self.new_message)
+        pass
 
     def pack_client(self, data: None) -> bytes:
         """Pack response for client: type + message"""
@@ -218,14 +218,13 @@ class Custom_ReceivedMessageMessage(ReceivedMessageMessage):
     @classmethod
     def unpack_server(cls, data: bytes) -> Self:
         """Unpack server message: skip type, then message"""
-        message, _ = decode_message(data, 1)  # Skip message type
-        return cls(message)
+        pass
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> Message:
+    def unpack_client(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack client response: skip type, then message"""
-        message, _ = decode_message(data, 1)  # Skip message type
-        return message
+        message, offset = decode_message(data, 1)  # Skip message type
+        return cls(message), offset
 
 class Custom_GetNumberOfUnreadMessagesMessage(GetNumberOfUnreadMessagesMessage):
     def pack_server(self) -> bytes:
@@ -237,15 +236,15 @@ class Custom_GetNumberOfUnreadMessagesMessage(GetNumberOfUnreadMessagesMessage):
         return struct.pack('!B', self.type.value) + encode_int(data)
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: type only"""
-        return cls()
+        return cls(), 1
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> int:
+    def unpack_client(cls, data: bytes) -> Tuple[int, int]:
         """Unpack client response: skip type, then count"""
-        count, _ = decode_int(data, 1)  # Skip message type
-        return count
+        count, offset = decode_int(data, 1)  # Skip message type
+        return count, offset
 
 
 class Custom_GetNumberOfReadMessagesMessage(GetNumberOfReadMessagesMessage):
@@ -258,15 +257,15 @@ class Custom_GetNumberOfReadMessagesMessage(GetNumberOfReadMessagesMessage):
         return struct.pack('!B', self.type.value) + encode_int(data)
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: type only"""
-        return cls()
+        return cls(), 1
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> int:
+    def unpack_client(cls, data: bytes) -> Tuple[int, int]:
         """Unpack client response: skip type, then count"""
-        count, _ = decode_int(data, 1)  # Skip message type
-        return count
+        count, offset = decode_int(data, 1)  # Skip message type
+        return count, offset
 
 class Custom_PopUnreadMessagesMessage(PopUnreadMessagesMessage):
     def pack_server(self) -> bytes:
@@ -281,20 +280,20 @@ class Custom_PopUnreadMessagesMessage(PopUnreadMessagesMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then num_messages"""
-        num_messages, _ = decode_int(data, 1)  # Skip message type
-        return cls(num_messages)
+        num_messages, offset = decode_int(data, 1)  # Skip message type
+        return cls(num_messages), offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[Message]:
+    def unpack_client(cls, data: bytes) -> Tuple[List[Message], int]:
         """Unpack client response: skip type, then count + messages"""
         count, offset = decode_int(data, 1)  # Skip message type
         messages = []
         for _ in range(count):
             message, offset = decode_message(data, offset)
             messages.append(message)
-        return messages
+        return messages, offset
 
 class Custom_GetReadMessagesMessage(GetReadMessagesMessage):
     def pack_server(self) -> bytes:
@@ -311,21 +310,21 @@ class Custom_GetReadMessagesMessage(GetReadMessagesMessage):
         return result
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then offset + num_messages"""
         offset, next_offset = decode_int(data, 1)  # Skip message type
-        num_messages, _ = decode_int(data, next_offset)
-        return cls(offset, num_messages)
+        num_messages, next_offset = decode_int(data, next_offset)
+        return cls(offset, num_messages), next_offset
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[Message]:
+    def unpack_client(cls, data: bytes) -> Tuple[List[Message], int]:
         """Unpack client response: skip type, then count + messages"""
         count, offset = decode_int(data, 1)  # Skip message type
         messages = []
         for _ in range(count):
             message, offset = decode_message(data, offset)
             messages.append(message)
-        return messages
+        return messages, offset
 
 class Custom_DeleteMessagesMessage(DeleteMessagesMessage):
     def pack_server(self) -> bytes:
@@ -340,14 +339,14 @@ class Custom_DeleteMessagesMessage(DeleteMessagesMessage):
         return struct.pack('!B', self.type.value)
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
+    def unpack_server(cls, data: bytes) -> Tuple[Self, int]:
         """Unpack server message: skip type, then count + message_ids"""
         count, offset = decode_int(data, 1)  # Skip message type
         message_ids = []
         for _ in range(count):
             msg_id, offset = decode_int(data, offset)
             message_ids.append(msg_id)
-        return cls(message_ids)
+        return cls(message_ids), offset
 
     @classmethod
     def unpack_client(cls, data: bytes) -> None:

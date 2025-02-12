@@ -89,10 +89,16 @@ class ChatServer:
                 self.close_connection(sock)
                 return
 
-            message_type = self.protocol.get_message_type(data)
-            message = self.protocol.message_class(message_type).unpack_server(data)
-            print(f"Received message of type {message_type}, {data} -> {message}")
-            self.process_message(sock, message)
+            # We may receive multiple messages at once
+            offset = 0
+            print(data)
+            while offset < len(data):
+                dm = data[offset:]
+                message_type = self.protocol.get_message_type(dm)
+                message, message_len = self.protocol.message_class(message_type).unpack_server(dm)
+                print(f"Received message of type {message_type}, {dm} -> {message}")
+                self.process_message(sock, message)
+                offset += message_len
 
         except Exception as e:
             print(f"Error handling client: {e}")

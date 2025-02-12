@@ -10,7 +10,7 @@ class MockSocket:
         self.send = MagicMock()
 
 def ret_string(message_type, response):
-    return f'{{"t": {message_type}, "r": {response}}}'.encode('utf-8')
+    return f'{{"t": {message_type}, "r": {response}}}'.encode('utf-8') + b'\n'
 
 class TestServer(unittest.TestCase):
     def setUp(self):
@@ -96,7 +96,7 @@ class TestServer(unittest.TestCase):
         self.send_message(JSON_LoginMessage("alt", "password"), alt_socket)
 
         self.send_message(JSON_SendMessageMessage("alt", "content2"))
-        alt_socket.send.assert_called_with(f'{{"t": {MessageType.RECEIVED_MESSAGE}, "n": {{"i": 1, "s": "test", "c": "content2"}}}}'.encode('utf-8'))
+        alt_socket.send.assert_called_with(f'{{"t": {MessageType.RECEIVED_MESSAGE}, "n": {{"i": 1, "s": "test", "c": "content2"}}}}\n'.encode('utf-8'))
         # Message should be added to the read mailbox since user is logged in
         self.assertEqual(len(self.server.account_manager.get_user("alt").read_mailbox), 1)
 

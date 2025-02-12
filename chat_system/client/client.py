@@ -23,7 +23,7 @@ class ChatClient:
             on_list_accounts=self.list_accounts,
             on_delete_messages=self.delete_messages,
             on_delete_account=self.delete_account,
-            on_view_history=self.get_read_messages,
+            get_read_messages=self.get_read_messages,
             on_pop_messages=self.pop_unread_messages
         )
 
@@ -87,6 +87,7 @@ class ChatClient:
         message = (self.protocol.message_class(MessageType.DELETE_MESSAGES))(message_ids=message_ids)
         self._send(message)
         self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
+        self.gui.update_messages_view()
 
     def delete_account(self):
         """Delete account."""
@@ -95,6 +96,7 @@ class ChatClient:
 
     def _send(self, message: ProtocolMessage):
         """Send a message to the server."""
+        print(f"Sending message: {message.type}, {message}")
         try:
             with self.socket_send_lock:
                 self.socket.send(message.pack_server())
@@ -109,10 +111,15 @@ class ChatClient:
                 if not data:
                     break
 
-                message_type = self.protocol.get_message_type(data)
-                print(f"Received message: {message_type}, {data}")
-                ret = self.protocol.message_class(message_type).unpack_client(data)
-                self._handle_response(message_type, ret)
+                # We may receive multiple messages at once
+                offset = 0
+                while offset < len(data):
+                    dm = data[offset:]
+                    message_type = self.protocol.get_message_type(dm)
+                    ret, ret_len = self.protocol.message_class(message_type).unpack_client(dm)
+                    print(f"Received message: {message_type}, {dm} -> {ret}")
+                    self._handle_response(message_type, ret)
+                    offset += ret_len
             except Exception as e:
                 self.gui.display_message(f"Connection error: {e}")
                 break
@@ -135,6 +142,7 @@ class ChatClient:
                 self.gui.show_main_widgets()
                 self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
                 self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
+                self.gui.update_messages_view()
 
         elif msg_type == MessageType.LIST_USERS:
             self.gui.display_users(response)
@@ -149,12 +157,13 @@ class ChatClient:
             self.gui.display_messages(response)
             self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
             self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
+            self.gui.update_messages_view()
 
         elif msg_type == MessageType.GET_READ_MESSAGES:
             self.gui.display_messages(response)
 
         elif msg_type == MessageType.RECEIVED_MESSAGE:
             msg = response.new_message
-            self.gui.display_message(f"New message from {msg.sender}")
-            self.gui.display_messages([msg])
             self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
+            self.gui.update_messages_view()
+            self.gui.display_message(f"New message from {msg.sender}")

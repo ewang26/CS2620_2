@@ -14,7 +14,7 @@ class ChatGUI:
                  on_list_accounts: Callable[[str, int, int], None],
                  on_delete_messages: Callable[[List[int]], None],
                  on_delete_account: Callable[[], None],
-                 on_view_history: Callable[[int, int], None],
+                 get_read_messages: Callable[[int, int], None],
                  on_pop_messages: Callable[[int], None]):
 
         self.root = tk.Tk()
@@ -29,12 +29,13 @@ class ChatGUI:
         self.on_list_accounts = on_list_accounts
         self.on_delete_messages = on_delete_messages
         self.on_delete_account = on_delete_account
-        self.on_view_history = on_view_history
+        self.get_read_messages = get_read_messages
         self.on_pop_messages = on_pop_messages
 
         # State variables
         self.current_page = 0
         self.page_size = 10
+        self.total_messages = 0
         self.selected_messages = set()
 
         self.show_login_widgets()
@@ -97,12 +98,15 @@ class ChatGUI:
         self.message_controls = ttk.Frame(self.message_frame)
         self.message_controls.pack(fill=tk.X, padx=5, pady=5)
 
-        self.read_label = ttk.Label(self.message_controls, text="Read messages: 0")
-        self.read_label.pack(side=tk.LEFT, padx=5, pady=5)
-        ttk.Button(self.message_controls, text="View History",
-                  command=self._handle_view_history).pack(side=tk.RIGHT, padx=5)
         ttk.Button(self.message_controls, text="Delete Selected",
-                   command=self._handle_delete_messages).pack(side=tk.RIGHT, padx=5)
+                   command=self._handle_delete_messages).pack(side=tk.LEFT, padx=5)
+
+        ttk.Button(self.message_controls, text=">", width=3,
+                   command=self._handle_view_page_right).pack(side=tk.RIGHT, padx=5)
+        self.read_label = ttk.Label(self.message_controls, text=self._get_view_history_text())
+        self.read_label.pack(side=tk.RIGHT, padx=5, pady=5)
+        ttk.Button(self.message_controls, text="<", width=3,
+                   command=self._handle_view_page_left).pack(side=tk.RIGHT, padx=5)
 
 
         # Send message frame
@@ -176,8 +180,13 @@ class ChatGUI:
             self.on_delete_messages(list(self.selected_messages))
             self.selected_messages.clear()
 
-    def _handle_view_history(self):
-        self.on_view_history(self.current_page * self.page_size, self.page_size)
+    def _handle_view_page_left(self):
+        self.current_page = max(0, self.current_page - 1)
+        self.update_messages_view()
+
+    def _handle_view_page_right(self):
+        self.current_page = min(self.total_messages // self.page_size, self.current_page + 1)
+        self.update_messages_view()
 
     def _handle_delete_account(self):
         if messagebox.askyesno("Confirm Delete", "Are you sure you want to delete your account?"):
@@ -195,6 +204,12 @@ class ChatGUI:
         selection = self.message_tree.selection()
         self.selected_messages = {int(self.message_tree.item(item)["values"][0]) for item in selection}
 
+    def _get_view_history_text(self):
+        start = self.current_page * self.page_size
+        end = min(self.total_messages, start + self.page_size)
+        print(f"Viewing {start} - {end} of {self.total_messages}")
+        return f"Viewing {start} - {end} of {self.total_messages}"
+
     def display_message(self, message: str):
         """Display a system message."""
         messagebox.showinfo("Message", message)
@@ -205,11 +220,18 @@ class ChatGUI:
 
     def update_read_count(self, count: int):
         """Update the unread message count display."""
-        self.read_label.config(text=f"Read messages: {count}")
+        self.total_messages = count
+        self.read_label.config(text=self._get_view_history_text())
+
+    def update_messages_view(self):
+        self.read_label.config(text=self._get_view_history_text())
+        self.get_read_messages(self.current_page * self.page_size, self.page_size)
 
     def display_messages(self, messages: List[Message]):
         """Display messages in the message tree."""
         self.message_tree.delete(*self.message_tree.get_children())
+        # Sort messages by decreasing id
+        messages.sort(key=lambda x: x.id, reverse=True)
         for msg in messages:
             self.message_tree.insert("", tk.END, values=(msg.id, msg.sender, msg.content))
 

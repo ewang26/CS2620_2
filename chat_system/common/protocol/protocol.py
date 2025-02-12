@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from enum import IntEnum
-from typing import List, Dict, Type, Self
+from typing import List, Dict, Type, Tuple
 
 from ..user import Message
 
@@ -35,13 +35,13 @@ class ProtocolMessage:
         pass
 
     @classmethod
-    def unpack_server(cls, data: bytes) -> any:
-        """ Unpacks the message sent to the server. """
+    def unpack_server(cls, data: bytes) -> Tuple[any, int]:
+        """ Unpacks the message sent to the server. Returns both the result and the number of bytes consumed. """
         pass
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> any:
-        """ Unpacks the message sent to the client. """
+    def unpack_client(cls, data: bytes) -> Tuple[any, int]:
+        """ Unpacks the message sent to the client. Returns both the result and the number of bytes consumed. """
         pass
 
 
