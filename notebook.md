@@ -1,5 +1,10 @@
 # Engineering Notebook
 
+### 2/11/25
+
+- Decided to send messages using a user's username rather than their ID in the GUI. In the list of users, we show the username and their corresponding ID, but to make this more user-friendly, we map the username to the ID on the server-side, so the user only needs to specify the username of the user they want to send messages to.
+
+
 ### 2/10/25
 
 - While working on the wire protocol, we replaced the old protocol methods in custom_protocol.py with new custom_message classes. Specifically, pack_message and unpack_message are replaced by the pack_server/pack_client/unpack_server/unpack_client methods in each Custom_Message class. And the request methods are replaced as follows:
