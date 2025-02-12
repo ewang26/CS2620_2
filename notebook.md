@@ -1,5 +1,9 @@
 # Engineering Notebook
 
+### 2/12/25
+
+- Added to our test suite. In particular, we create a password security test that tests empty passwords and long passwords, and makes sure that even if two users use the same passwords, the salts and hashes are different. We also test if the message ordering is preserved through the queue/mailbox system and if passwords can handle edge cases where special characters and Unicode are used.
+
 ### 2/11/25
 
 - Decided to send messages using a user's username rather than their ID in the GUI. In the list of users, we show the username and their corresponding ID, but to make this more user-friendly, we map the username to the ID on the server-side, so the user only needs to specify the username of the user they want to send messages to.
