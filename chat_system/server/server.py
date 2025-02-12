@@ -2,6 +2,7 @@ import json
 import selectors
 import signal
 import socket
+from typing import Dict, Optional
 
 from chat_system.common.config import ConnectionSettings
 from .account_manager import AccountManager
@@ -17,7 +18,7 @@ class ChatServer:
         self.port = config.port
         self.protocol: Protocol = CustomProtocol() if config.use_custom_protocol else JSONProtocol()
         self.account_manager = AccountManager()
-        self.client_sessions: Dict[socket.socket, int] = {}  # socket -> user id
+        self.client_sessions: Dict[socket.socket, Optional[str]] = {}  # socket -> username
         self.next_message_id = 0
 
         self.running = True
@@ -77,7 +78,7 @@ class ChatServer:
         client, addr = sock.accept()
         client.setblocking(False)
         self.selector.register(client, selectors.EVENT_READ, self.handle_client)
-        self.client_sessions[client] = -1
+        self.client_sessions[client] = None
         print(f"New connection from {addr}")
 
     def handle_client(self, sock: socket.socket):
@@ -109,7 +110,7 @@ class ChatServer:
             username, password = message.name, message.password
             user = self.account_manager.login(username, password)
             if user:
-                self.client_sessions[sock] = user.id
+                self.client_sessions[sock] = user.name
                 response = message.pack_client(None)
             else:
                 response = message.pack_client("Invalid username or password")
@@ -119,31 +120,31 @@ class ChatServer:
             print("Message received before login:", message.type)
 
         elif message.type == MessageType.LOGOUT:
-            self.client_sessions[sock] = -1
+            self.client_sessions[sock] = None
 
         elif message.type == MessageType.LIST_USERS:
             pattern = message.pattern
             accounts = self.account_manager.list_accounts(pattern)
             # Cap to valid range
-            message.offset = max(0, message.offset)
+            offset = max(0, message.offset)
             if message.limit == -1:
-                accounts = accounts[message.offset:]
+                accounts = accounts[offset:]
             else:
-                accounts = accounts[message.offset:message.offset + message.limit]
+                limit = min(len(accounts), offset + message.limit)
+                accounts = accounts[offset:limit]
             response = message.pack_client(accounts)
-            sock.send(response)
-
-        elif message.type == MessageType.GET_USER_FROM_ID:
-            user = self.account_manager.get_user(message.user_id)
-            response = message.pack_client(user.name)
             sock.send(response)
 
         elif message.type == MessageType.DELETE_ACCOUNT:
             self.account_manager.delete_account(self.client_sessions[sock])
-            self.client_sessions[sock] = -1
+            self.client_sessions[sock] = None
 
         elif message.type == MessageType.SEND_MESSAGE:
             recipient, content = message.receiver, message.content
+            # Make sure the recipient exists
+            if self.account_manager.get_user(recipient) is None:
+                return
+
             sender_id = self.client_sessions[sock]
             message = Message(self.next_message_id, sender_id, content)
             self.next_message_id += 1
@@ -163,6 +164,11 @@ class ChatServer:
         elif message.type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
             user = self.account_manager.get_user(self.client_sessions[sock])
             response = message.pack_client(user.get_number_of_unread_messages())
+            sock.send(response)
+
+        elif message.type == MessageType.GET_NUMBER_OF_READ_MESSAGES:
+            user = self.account_manager.get_user(self.client_sessions[sock])
+            response = message.pack_client(user.get_number_of_read_messages())
             sock.send(response)
 
         elif message.type == MessageType.POP_UNREAD_MESSAGES:

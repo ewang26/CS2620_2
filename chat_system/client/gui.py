@@ -1,8 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
-from typing import Callable, List, Optional
-import threading
-from queue import Queue
+from typing import Callable, List
 
 from chat_system.common.user import Message
 
@@ -22,7 +20,6 @@ class ChatGUI:
         self.root = tk.Tk()
         self.root.title("Chat Client")
         self.root_frame = ttk.Frame(self.root)
-        self.message_queue = Queue()
 
         # Store callbacks
         self.on_login = on_login
@@ -41,7 +38,6 @@ class ChatGUI:
         self.selected_messages = set()
 
         self.show_login_widgets()
-        self._start_message_thread()
 
     def show_login_widgets(self):
         # Clear current window
@@ -101,10 +97,13 @@ class ChatGUI:
         self.message_controls = ttk.Frame(self.message_frame)
         self.message_controls.pack(fill=tk.X, padx=5, pady=5)
 
-        ttk.Button(self.message_controls, text="Delete Selected",
-                  command=self._handle_delete_messages).pack(side=tk.LEFT, padx=5)
+        self.read_label = ttk.Label(self.message_controls, text="Read messages: 0")
+        self.read_label.pack(side=tk.LEFT, padx=5, pady=5)
         ttk.Button(self.message_controls, text="View History",
-                  command=self._handle_view_history).pack(side=tk.LEFT, padx=5)
+                  command=self._handle_view_history).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(self.message_controls, text="Delete Selected",
+                   command=self._handle_delete_messages).pack(side=tk.RIGHT, padx=5)
+
 
         # Send message frame
         self.send_frame = ttk.LabelFrame(self.root_frame, text="Send Message")
@@ -204,36 +203,28 @@ class ChatGUI:
         """Update the unread message count display."""
         self.unread_label.config(text=f"Unread messages: {count}")
 
+    def update_read_count(self, count: int):
+        """Update the unread message count display."""
+        self.read_label.config(text=f"Read messages: {count}")
+
     def display_messages(self, messages: List[Message]):
         """Display messages in the message tree."""
         self.message_tree.delete(*self.message_tree.get_children())
         for msg in messages:
             self.message_tree.insert("", tk.END, values=(msg.id, msg.sender, msg.content))
 
-    def display_users(self, users: List[tuple]):
+    def display_users(self, users: List[str]):
         """Display the list of users in a popup window."""
         dialog = tk.Toplevel(self.root)
         dialog.title("User List")
 
-        tree = ttk.Treeview(dialog, columns=("id", "name"), show="headings")
-        tree.heading("id", text="ID")
+        tree = ttk.Treeview(dialog, columns="name", show="headings")
         tree.heading("name", text="Username")
         tree.pack(padx=10, pady=10, fill=tk.BOTH, expand=True)
 
-        for user_id, username in users:
-            tree.insert("", tk.END, values=(user_id, username))
+        for username in users:
+            tree.insert("", tk.END, values=username)
 
     def start(self):
         """Start the GUI main loop."""
         self.root.mainloop()
-
-    def _start_message_thread(self):
-        """Start a thread to process messages from the queue."""
-        def process_messages():
-            while True:
-                message = self.message_queue.get()
-                self.chat_text.insert(tk.END, message + "\n")
-                self.chat_text.see(tk.END)
-
-        thread = threading.Thread(target=process_messages, daemon=True)
-        thread.start()

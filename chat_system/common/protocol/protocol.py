@@ -11,13 +11,13 @@ class MessageType(IntEnum):
     LOGIN = 2
     LOGOUT = 3
     LIST_USERS = 4
-    GET_USER_FROM_ID = 5
-    DELETE_ACCOUNT = 6
+    DELETE_ACCOUNT = 5
 
     # Message operations
-    SEND_MESSAGE = 7
-    RECEIVED_MESSAGE = 8
-    GET_NUMBER_OF_UNREAD_MESSAGES = 9
+    SEND_MESSAGE = 6
+    RECEIVED_MESSAGE = 7
+    GET_NUMBER_OF_UNREAD_MESSAGES = 8
+    GET_NUMBER_OF_READ_MESSAGES = 9
     POP_UNREAD_MESSAGES = 10
     GET_READ_MESSAGES = 11
     DELETE_MESSAGES = 12
@@ -70,13 +70,6 @@ class ListUsersMessage(ProtocolMessage):
     offset: int
     limit: int
 
-
-@dataclass
-class GetUserFromIdMessage(ProtocolMessage):
-    type = MessageType.GET_USER_FROM_ID
-    user_id: int
-
-
 @dataclass
 class DeleteAccountMessage(ProtocolMessage):
     type = MessageType.DELETE_ACCOUNT
@@ -99,6 +92,11 @@ class ReceivedMessageMessage(ProtocolMessage):
 @dataclass
 class GetNumberOfUnreadMessagesMessage(ProtocolMessage):
     type = MessageType.GET_NUMBER_OF_UNREAD_MESSAGES
+    pass
+
+@dataclass
+class GetNumberOfReadMessagesMessage(ProtocolMessage):
+    type = MessageType.GET_NUMBER_OF_READ_MESSAGES
     pass
 
 

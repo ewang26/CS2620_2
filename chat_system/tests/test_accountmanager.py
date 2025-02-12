@@ -14,12 +14,15 @@ class TestAccountManager(unittest.TestCase):
         # Test duplicate username
         self.assertIsNotNone(self.account_manager.create_account("test", "different"))
 
+        # Test bad username
+        self.assertIsNotNone(self.account_manager.create_account("", "different"))
+
     def test_unique_ids(self):
         """Test that user ids are unique."""
         ids = set()
         for i in range(10):
             self.account_manager.create_account(str(i), "password")
-            user_id = self.account_manager.login(str(i), "password").id
+            user_id = self.account_manager.login(str(i), "password").name
             self.assertNotIn(user_id, ids)
             ids.add(user_id)
 
@@ -71,14 +74,14 @@ class TestAccountManager(unittest.TestCase):
         # Test similar passwords produce different security data
         self.account_manager.create_account("user1", "password123")
         self.account_manager.create_account("user2", "password123")
-        
+
         # Get the stored password hashes
-        user1_id = self.account_manager.login("user1", "password123").id
-        user2_id = self.account_manager.login("user2", "password123").id
-        
-        hash1, salt1 = self.account_manager.login_info[user1_id]
-        hash2, salt2 = self.account_manager.login_info[user2_id]
-        
+        user1 = self.account_manager.login("user1", "password123")
+        user2 = self.account_manager.login("user2", "password123")
+
+        hash1, salt1 = self.account_manager.login_info[user1.name]
+        hash2, salt2 = self.account_manager.login_info[user2.name]
+
         # Same password should have different salts and hashes
         self.assertNotEqual(salt1, salt2)
         self.assertNotEqual(hash1, hash2)
@@ -87,20 +90,20 @@ class TestAccountManager(unittest.TestCase):
         """Test that messages maintain correct ordering."""
         self.account_manager.create_account("sender", "pass")
         self.account_manager.create_account("receiver", "pass")
-        
+
         sender = self.account_manager.login("sender", "pass")
         receiver = self.account_manager.login("receiver", "pass")
-        
+
         # Send messages in specific order
         messages = ["first", "second", "third"]
         for msg in messages:
-            receiver.add_message(Message(0, sender.id, msg))
-        
+            receiver.add_message(Message(0, sender.name, msg))
+
         # Check order in unread queue
         queue = receiver.message_queue
         for i, msg in enumerate(messages):
             self.assertEqual(queue[i].content, msg)
-        
+
         # Check order maintained after popping
         popped = receiver.pop_unread_messages(-1)
         for i, msg in enumerate(messages):
@@ -118,16 +121,16 @@ class TestAccountManager(unittest.TestCase):
             ("very_long", "a" * 100),         # Long password
             ("very_short", "a"),              # Single character
         ]
-        
+
         for username, password in test_cases:
             # Should be able to create account
             error = self.account_manager.create_account(username, password)
             self.assertIsNone(error, f"Failed to create account with password type: {username}")
-            
+
             # Should be able to login with exact password
             user = self.account_manager.login(username, password)
             self.assertIsNotNone(user, f"Failed to login with password type: {username}")
-            
+
             # Wrong password should fail
             self.assertIsNone(
                 self.account_manager.login(username, password + "wrong"),
@@ -138,16 +141,16 @@ class TestAccountManager(unittest.TestCase):
         """Test edge cases for message deletion."""
         self.account_manager.create_account("user", "pass")
         user = self.account_manager.login("user", "pass")
-        
+
         # Try deleting non-existent messages
         user.delete_messages([1, 2, 3])
         self.assertEqual(len(user.read_mailbox), 0)
-        
+
         # Add and delete messages
         user.add_read_message(Message(1, 0, "test"))
         user.delete_messages([1])
         self.assertEqual(len(user.read_mailbox), 0)
-        
+
         # Try deleting same message multiple times
         user.add_read_message(Message(2, 0, "test"))
         user.delete_messages([2, 2, 2])

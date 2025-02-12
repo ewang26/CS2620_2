@@ -4,12 +4,11 @@ from typing import List
 @dataclass
 class Message:
     id: int
-    sender: int
+    sender: str
     content: str
 
 @dataclass
 class User:
-    id: int
     name: str
     message_queue: List[Message]
     read_mailbox: List[Message]
@@ -33,6 +32,9 @@ class User:
 
     def get_number_of_unread_messages(self) -> int:
         return len(self.message_queue)
+
+    def get_number_of_read_messages(self) -> int:
+        return len(self.read_mailbox)
 
     def get_read_messages(self, offset: int, num_messages: int) -> List[Message]:
         n = len(self.read_mailbox)

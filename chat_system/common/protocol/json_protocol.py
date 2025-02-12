@@ -69,10 +69,8 @@ class JSON_ListUsersMessage(ListUsersMessage):
         return json.dumps({"t": self.type, "p": self.pattern, "o": self.offset, "l": self.limit}).encode('utf-8')
 
     def pack_client(self, data: List[User]) -> bytes:
-        user_pairs = []
-        for user in data:
-            user_pairs.append([user.id, user.name])
-        return json.dumps({"t": self.type, "r": user_pairs}).encode('utf-8')
+        users = [user.name for user in data]
+        return json.dumps({"t": self.type, "r": users}).encode('utf-8')
 
     @classmethod
     def unpack_server(cls, data: bytes) -> Self:
@@ -80,24 +78,7 @@ class JSON_ListUsersMessage(ListUsersMessage):
         return cls(d["p"], d["o"], d["l"])
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[Tuple[int, str]]:
-        user_pairs = json.loads(data.decode('utf-8'))["r"]
-        return [(pair[0], pair[1]) for pair in user_pairs]
-
-
-class JSON_GetUserFromIdMessage(GetUserFromIdMessage):
-    def pack_server(self) -> bytes:
-        return json.dumps({"t": self.type, "u": self.user_id}).encode('utf-8')
-
-    def pack_client(self, data: str) -> bytes:
-        return json.dumps({"t": self.type, "r": data}).encode('utf-8')
-
-    @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
-        return cls(json.loads(data.decode('utf-8'))["u"])
-
-    @classmethod
-    def unpack_client(cls, data: bytes) -> str:
+    def unpack_client(cls, data: bytes) -> List[str]:
         return json.loads(data.decode('utf-8'))["r"]
 
 
@@ -152,6 +133,22 @@ class JSON_ReceivedMessageMessage(ReceivedMessageMessage):
 
 
 class JSON_GetNumberOfUnreadMessagesMessage(GetNumberOfUnreadMessagesMessage):
+    def pack_server(self) -> bytes:
+        return json.dumps({"t": self.type}).encode('utf-8')
+
+    def pack_client(self, data: int) -> bytes:
+        return json.dumps({"t": self.type, "r": data}).encode('utf-8')
+
+    @classmethod
+    def unpack_server(cls, data: bytes) -> Self:
+        return cls()
+
+    @classmethod
+    def unpack_client(cls, data: bytes) -> int:
+        return json.loads(data.decode('utf-8'))["r"]
+
+
+class JSON_GetNumberOfReadMessagesMessage(GetNumberOfReadMessagesMessage):
     def pack_server(self) -> bytes:
         return json.dumps({"t": self.type}).encode('utf-8')
 
@@ -226,11 +223,11 @@ class JSONProtocol(Protocol):
         MessageType.LOGIN: JSON_LoginMessage,
         MessageType.LOGOUT: JSON_LogoutMessage,
         MessageType.LIST_USERS: JSON_ListUsersMessage,
-        MessageType.GET_USER_FROM_ID: JSON_GetUserFromIdMessage,
         MessageType.DELETE_ACCOUNT: JSON_DeleteAccountMessage,
         MessageType.SEND_MESSAGE: JSON_SendMessageMessage,
         MessageType.RECEIVED_MESSAGE: JSON_ReceivedMessageMessage,
         MessageType.GET_NUMBER_OF_UNREAD_MESSAGES: JSON_GetNumberOfUnreadMessagesMessage,
+        MessageType.GET_NUMBER_OF_READ_MESSAGES: JSON_GetNumberOfReadMessagesMessage,
         MessageType.POP_UNREAD_MESSAGES: JSON_PopUnreadMessagesMessage,
         MessageType.GET_READ_MESSAGES: JSON_GetReadMessagesMessage,
         MessageType.DELETE_MESSAGES: JSON_DeleteMessagesMessage

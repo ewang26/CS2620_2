@@ -34,12 +34,12 @@ def decode_bool(data: bytes, offset: int = 0) -> Tuple[bool, int]:
 
 def encode_message(msg: Message) -> bytes:
     """Encode a Message object into bytes."""
-    return encode_int(msg.id) + encode_int(msg.sender) + encode_str(msg.content)
+    return encode_int(msg.id) + encode_str(msg.sender) + encode_str(msg.content)
 
 def decode_message(data: bytes, offset: int = 0) -> Tuple[Message, int]:
     """Decode a Message object from bytes."""
     msg_id, offset = decode_int(data, offset)
-    sender, offset = decode_int(data, offset)
+    sender, offset = decode_str(data, offset)
     content, offset = decode_str(data, offset)
     return Message(msg_id, sender, content), offset
 
@@ -133,7 +133,6 @@ class Custom_ListUsersMessage(ListUsersMessage):
         result = struct.pack('!B', self.type.value)
         result += encode_int(len(data))
         for user in data:
-            result += encode_int(user.id)
             result += encode_str(user.name)
         return result
 
@@ -146,36 +145,15 @@ class Custom_ListUsersMessage(ListUsersMessage):
         return cls(pattern, list_offset, limit)
 
     @classmethod
-    def unpack_client(cls, data: bytes) -> List[Tuple[int, str]]:
+    def unpack_client(cls, data: bytes) -> List[str]:
         """Unpack client response: skip type, then count + usernames"""
         count, offset = decode_int(data, 1)  # Skip message type
         usernames = []
         for _ in range(count):
-            user_id, offset = decode_int(data, offset)
             username, offset = decode_str(data, offset)
-            usernames.append((user_id, username))
+            usernames.append(username)
         return usernames
 
-class Custom_GetUserFromIdMessage(GetUserFromIdMessage):
-    def pack_server(self) -> bytes:
-        """Pack message for server: type + user_id"""
-        return struct.pack('!B', self.type.value) + encode_int(self.user_id)
-
-    def pack_client(self, data: str) -> bytes:
-        """Pack response for client: type + username"""
-        return struct.pack('!B', self.type.value) + encode_str(data)
-
-    @classmethod
-    def unpack_server(cls, data: bytes) -> Self:
-        """Unpack server message: skip type, then user_id"""
-        user_id, _ = decode_int(data, 1)  # Skip message type
-        return cls(user_id)
-
-    @classmethod
-    def unpack_client(cls, data: bytes) -> str:
-        """Unpack client response: skip type, then username"""
-        username, _ = decode_str(data, 1)  # Skip message type
-        return username
 
 class Custom_DeleteAccountMessage(DeleteAccountMessage):
     def pack_server(self) -> bytes:
@@ -199,8 +177,8 @@ class Custom_DeleteAccountMessage(DeleteAccountMessage):
 class Custom_SendMessageMessage(SendMessageMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type + recipient_username + content"""
-        return (struct.pack('!B', self.type.value) + 
-                encode_str(self.receiver) +  # Now encoding username string
+        return (struct.pack('!B', self.type.value) +
+                encode_str(self.receiver) +
                 encode_str(self.content))
 
     def pack_client(self, data: Optional[str]) -> bytes:
@@ -250,6 +228,27 @@ class Custom_ReceivedMessageMessage(ReceivedMessageMessage):
         return message
 
 class Custom_GetNumberOfUnreadMessagesMessage(GetNumberOfUnreadMessagesMessage):
+    def pack_server(self) -> bytes:
+        """Pack message for server: type only"""
+        return struct.pack('!B', self.type.value)
+
+    def pack_client(self, data: int) -> bytes:
+        """Pack response for client: type + count"""
+        return struct.pack('!B', self.type.value) + encode_int(data)
+
+    @classmethod
+    def unpack_server(cls, data: bytes) -> Self:
+        """Unpack server message: type only"""
+        return cls()
+
+    @classmethod
+    def unpack_client(cls, data: bytes) -> int:
+        """Unpack client response: skip type, then count"""
+        count, _ = decode_int(data, 1)  # Skip message type
+        return count
+
+
+class Custom_GetNumberOfReadMessagesMessage(GetNumberOfReadMessagesMessage):
     def pack_server(self) -> bytes:
         """Pack message for server: type only"""
         return struct.pack('!B', self.type.value)
@@ -362,11 +361,11 @@ class CustomProtocol(Protocol):
         MessageType.LOGIN: Custom_LoginMessage,
         MessageType.LOGOUT: Custom_LogoutMessage,
         MessageType.LIST_USERS: Custom_ListUsersMessage,
-        MessageType.GET_USER_FROM_ID: Custom_GetUserFromIdMessage,
         MessageType.DELETE_ACCOUNT: Custom_DeleteAccountMessage,
         MessageType.SEND_MESSAGE: Custom_SendMessageMessage,
         MessageType.RECEIVED_MESSAGE: Custom_ReceivedMessageMessage,
         MessageType.GET_NUMBER_OF_UNREAD_MESSAGES: Custom_GetNumberOfUnreadMessagesMessage,
+        MessageType.GET_NUMBER_OF_READ_MESSAGES: Custom_GetNumberOfReadMessagesMessage,
         MessageType.POP_UNREAD_MESSAGES: Custom_PopUnreadMessagesMessage,
         MessageType.GET_READ_MESSAGES: Custom_GetReadMessagesMessage,
         MessageType.DELETE_MESSAGES: Custom_DeleteMessagesMessage,

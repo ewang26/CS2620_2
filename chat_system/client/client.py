@@ -1,6 +1,6 @@
 import socket
 import threading
-from typing import Any, List, Dict
+from typing import Any, List
 from ..common.config import ConnectionSettings
 from ..common.protocol.protocol import Protocol, ProtocolMessage, MessageType
 from ..common.protocol.custom_protocol import CustomProtocol
@@ -86,6 +86,7 @@ class ChatClient:
         """Delete messages."""
         message = (self.protocol.message_class(MessageType.DELETE_MESSAGES))(message_ids=message_ids)
         self._send(message)
+        self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
 
     def delete_account(self):
         """Delete account."""
@@ -133,19 +134,21 @@ class ChatClient:
             else:
                 self.gui.show_main_widgets()
                 self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
+                self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
 
         elif msg_type == MessageType.LIST_USERS:
             self.gui.display_users(response)
 
-        elif msg_type == MessageType.GET_USER_FROM_ID:
-            pass
-
         elif msg_type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
             self.gui.update_unread_count(response)
+
+        elif msg_type == MessageType.GET_NUMBER_OF_READ_MESSAGES:
+            self.gui.update_read_count(response)
 
         elif msg_type == MessageType.POP_UNREAD_MESSAGES:
             self.gui.display_messages(response)
             self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
+            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
 
         elif msg_type == MessageType.GET_READ_MESSAGES:
             self.gui.display_messages(response)
@@ -154,3 +157,4 @@ class ChatClient:
             msg = response.new_message
             self.gui.display_message(f"New message from {msg.sender}")
             self.gui.display_messages([msg])
+            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())

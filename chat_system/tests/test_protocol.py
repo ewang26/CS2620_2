@@ -61,8 +61,8 @@ class TestCustomProtocol(unittest.TestCase):
         self.assertEqual(unpacked.limit, limit)
 
         # Test response with user list
-        users = [(0, "user0"), (1, "user1"), (2, "user2")]
-        users_obj = [User(uid, name, [], []) for uid, name in users]
+        users = ["user0", "user1", "user2"]
+        users_obj = [User(name, [], []) for name in users]
         packed_response = message.pack_client(users_obj)
         unpacked_response = Custom_ListUsersMessage.unpack_client(packed_response)
         self.assertEqual(unpacked_response, users)

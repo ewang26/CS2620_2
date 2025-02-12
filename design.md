@@ -21,31 +21,30 @@ Additionally, if a user is currently logged in and they receive a message, the s
 ## Server state
 At a high level, the server should maintain a list of `User`s. Each user then has an `message_queue` and `read_mailbox` of `Message`s. Sending messages to a user will add a message to their `message_queue`, and the user can then pop messages from this queue. When a user pops a message, it should be moved to their `read_mailbox`.
 
-To help id users and messages, each user and message should have a unique UUID. We can keep a global state of `nextUserId` and `nextMessageId` to help generate these. This means we can also store users and messages in a dictionary, with the UUID as the key.
+Since we require users to have unique usernames, we can use the username as the unique identifier for each user.
 
 Concretely, we should have
 ```python
 class User:
-    id: int
     name: str
     message_queue: List[Message]
     read_mailbox: List[Message]
 
 class Message:
     id: int
-    sender: int
+    sender: str
     content: str
 ```
 
 When a client logs in, the server should map the client's socket to its user id. This way, the client doesn't need to send its user id with every request.
 
-Note that because many clients can be connected at once (potentially with one user on multiple clients as well), there may be concurrent accesses to the server state. We can either use a lock to protect the state, or have the server be single-threaded and use a queue to handle requests. **We chose the second option for simplicity, and because we don't expect a high load on the server.**
+Note that because many clients can be connected at once (potentially with one user on multiple clients as well), there may be concurrent accesses to the server state. We can either use a lock to protect the state, or have the server be single-threaded and use a queue to handle requests. **We chose the second option for simplicity, because we don't expect a high load on the server.**
 
 ## Client state
 
-To help reduce the number of requests to the server, the client should cache all the `User -> id` mappings that it knows about. This way, when the client wants to send a message to a user, it can just use the id it has cached. 
+The client does not need to cache much state. Since the server keeps track of what accounts are logged in and what messages are sent, the client can just keep track of the messages it has received.
 
-Since messages have a unique id that is purely incrementing, we can also order messages by their id. This way, the client can display all messages in chronological order.
+Since messages have a unique id that is purely incrementing, we can order messages by their id. This way, the client can display all messages in chronological order.
 
 ## Interfaces
 
@@ -53,17 +52,17 @@ Since messages have a unique id that is purely incrementing, we can also order m
 
 `Login(name: str, password: str) -> Optional[str]`:
 
-`ListUsers(pattern: str, offset: int, limit: int) -> List[Tuple[int, str]]`:
+`ListUsers(pattern: str, offset: int, limit: int) -> List[str]`:
 - Takes in a wildcard pattern and returns a list of users that match the pattern. The `offset` and `limit` parameters are for pagination. `limit` can be `-1` to return all users after `offset`.
 
-`GetUserFromId(user_id: int) -> str`:
-
-`SendMessage(receiver: int, content: str) -> None`:
+`SendMessage(receiver: str, content: str) -> None`:
 
 `ReceivedMessage(new_message: Message) -> None`:
 - Sent from the server to the client, whenever the client receives a new message.
 
 `GetNumberOfUnreadMessages() -> int`:
+
+`GetNumberOfReadMessages() -> int`:
 
 `PopUnreadMessages(num_messages: int) -> List[Message]`:
 - Pops the first `num_messages` messages from the unread queue. Can pass `-1` to pop all messages.
