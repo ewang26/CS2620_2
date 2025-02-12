@@ -91,7 +91,6 @@ class ChatServer:
 
             # We may receive multiple messages at once
             offset = 0
-            print(data)
             while offset < len(data):
                 dm = data[offset:]
                 message_type = self.protocol.get_message_type(dm)
