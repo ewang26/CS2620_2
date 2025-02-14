@@ -2,6 +2,50 @@
 
 ### 2/12/25
 
+- At this point, our project structure has changed a bit and now looks like the following:
+- 
+# Chat System Project Structure
+
+## Root Directory
+
+chat_system/
+├── setup.py                # Package setup configuration
+├── config.json             # Main configuration file
+├── client_config.json      # Client-specific configuration
+├── server_config.json      # Server-specific configuration
+├── notebook.md             # Engineering notebook
+├── design.md               # Design document
+│
+├── client/                 # Client-side code
+│   ├── __init__.py
+│   ├── __main__.py        # Client entry point
+│   ├── client.py          # Client implementation
+│   └── gui.py             # GUI implementation
+│
+├── server/                 # Server-side code
+│   ├── __init__.py
+│   ├── __main__.py        # Server entry point
+│   ├── server.py          # Server implementation
+│   └── account_manager.py  # User account management
+│
+├── common/                 # Shared code between client and server
+│   ├── __init__.py
+│   ├── config.py          # Configuration loading
+│   ├── security.py        # Password hashing and verification
+│   ├── user.py            # User and Message data models
+│   │
+│   └── protocol/          # Protocol implementations
+│       ├── __init__.py
+│       ├── protocol.py    # Base protocol classes
+│       ├── custom_protocol.py  # Binary protocol implementation
+│       └── json_protocol.py    # JSON protocol implementation
+│
+└── tests/                  # Test suite
+    ├── __init__.py
+    ├── test_protocol.py
+    ├── test_server.py
+    └── test_accountmanager.py
+
 - Ran into an issue where messages that are sent immediately after each other are received on the same socket poll, but only the first message is processed. To fix this, we need to add some form of message framing to the protocol. 
 
 - Went and got rid of all user ID entirely, now that we're using usernames to send messages.
