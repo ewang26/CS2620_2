@@ -1,31 +1,142 @@
-import json
-import selectors
+import grpc
+from concurrent import futures
 import signal
-import socket
+import json
 from typing import Dict, Optional
 
 from chat_system.common.config import ConnectionSettings
 from .account_manager import AccountManager
-from ..common.protocol.custom_protocol import CustomProtocol
-from ..common.protocol.json_protocol import JSONProtocol
-from ..common.protocol.protocol import *
 from ..common.user import Message
+from ..proto import chat_pb2, chat_pb2_grpc
 
+class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
+    def __init__(self, server):
+        self.server = server
+
+    def CreateAccount(self, request, context):
+        error = self.server.account_manager.create_account(request.username, request.password)
+        return chat_pb2.CreateAccountResponse(error=error if error else None)
+
+    def Login(self, request, context):
+        user = self.server.account_manager.login(request.username, request.password)
+        if user:
+            self.server.client_sessions[context.peer()] = user.name
+            return chat_pb2.LoginResponse()
+        return chat_pb2.LoginResponse(error="Invalid username or password")
+
+    def Logout(self, request, context):
+        if context.peer() in self.server.client_sessions:
+            self.server.client_sessions[context.peer()] = None
+        return chat_pb2.LogoutResponse()
+
+    def ListUsers(self, request, context):
+        accounts = self.server.account_manager.list_accounts(request.pattern)
+        offset = max(0, request.offset)
+        if request.limit == -1:
+            accounts = accounts[offset:]
+        else:
+            limit = min(len(accounts), offset + request.limit)
+            accounts = accounts[offset:limit]
+        return chat_pb2.ListUsersResponse(usernames=[user.name for user in accounts])
+
+    def DeleteAccount(self, request, context):
+        if context.peer() in self.server.client_sessions:
+            self.server.account_manager.delete_account(self.server.client_sessions[context.peer()])
+            self.server.client_sessions[context.peer()] = None
+        return chat_pb2.DeleteAccountResponse()
+
+    def SendMessage(self, request, context):
+        sender_id = self.server.client_sessions.get(context.peer())
+        if not sender_id:
+            context.abort(grpc.StatusCode.UNAUTHENTICATED, "Not logged in")
+            
+        recipient = request.receiver
+        if self.server.account_manager.get_user(recipient) is None:
+            context.abort(grpc.StatusCode.NOT_FOUND, "Recipient not found")
+            
+        message = Message(self.server.next_message_id, sender_id, request.content)
+        self.server.next_message_id += 1
+
+        # Check if recipient is online
+        read = False
+        for peer, username in self.server.client_sessions.items():
+            if username == recipient:
+                read = True
+                break
+
+        if read:
+            self.server.account_manager.get_user(recipient).add_read_message(message)
+        else:
+            self.server.account_manager.get_user(recipient).add_message(message)
+
+        return chat_pb2.SendMessageResponse()
+
+    def GetNumberOfUnreadMessages(self, request, context):
+        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        return chat_pb2.GetNumberOfUnreadMessagesResponse(
+            count=user.get_number_of_unread_messages()
+        )
+
+    def GetNumberOfReadMessages(self, request, context):
+        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        return chat_pb2.GetNumberOfReadMessagesResponse(
+            count=user.get_number_of_read_messages()
+        )
+
+    def PopUnreadMessages(self, request, context):
+        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        messages = user.pop_unread_messages(request.num_messages)
+        return chat_pb2.PopUnreadMessagesResponse(
+            messages=[
+                chat_pb2.Message(id=m.id, sender=m.sender, content=m.content)
+                for m in messages
+            ]
+        )
+
+    def GetReadMessages(self, request, context):
+        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        messages = user.get_read_messages(request.offset, request.num_messages)
+        return chat_pb2.GetReadMessagesResponse(
+            messages=[
+                chat_pb2.Message(id=m.id, sender=m.sender, content=m.content)
+                for m in messages
+            ]
+        )
+
+    def DeleteMessages(self, request, context):
+        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        user.delete_messages(request.message_ids)
+        return chat_pb2.DeleteMessagesResponse()
+
+    def SubscribeToMessages(self, request, context):
+        peer = context.peer()
+        while context.is_active():
+            # Check for new messages
+            if peer in self.server.client_sessions:
+                username = self.server.client_sessions[peer]
+                if username:
+                    user = self.server.account_manager.get_user(username)
+                    if user and user.has_unread_messages():
+                        message = user.peek_unread_message()
+                        yield chat_pb2.MessageNotification(
+                            message=chat_pb2.Message(
+                                id=message.id,
+                                sender=message.sender,
+                                content=message.content
+                            )
+                        )
 
 class ChatServer:
     def __init__(self, config: ConnectionSettings = ConnectionSettings()):
         self.host = config.host
         self.port = config.port
-        self.protocol: Protocol = CustomProtocol() if config.use_custom_protocol else JSONProtocol()
         self.account_manager = AccountManager()
-        self.client_sessions: Dict[socket.socket, Optional[str]] = {}  # socket -> username
+        self.client_sessions: Dict[str, Optional[str]] = {}  # peer -> username
         self.next_message_id = 0
-
         self.running = True
         self.server_path = config.server_data_path
-        self.selector = selectors.DefaultSelector()
 
-        # Register signal handlers to save state when shutting down
+        # Register signal handlers
         signal.signal(signal.SIGINT, self.handle_shutdown)
         signal.signal(signal.SIGTERM, self.handle_shutdown)
 
@@ -50,154 +161,22 @@ class ChatServer:
 
     def start(self):
         """Start the chat server."""
-        server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        server.bind((self.host, self.port))
-        server.listen()
-        server.setblocking(False)
-
-        self.selector.register(server, selectors.EVENT_READ, self.accept_connection)
-
+        server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+        chat_pb2_grpc.add_ChatServiceServicer_to_server(ChatServicer(self), server)
+        server.add_insecure_port(f'{self.host}:{self.port}')
+        server.start()
         print(f"Server started on {self.host}:{self.port}")
-
-        while self.running:
-            events = self.selector.select(timeout=1)
-            for key, mask in events:
-                callback = key.data
-                callback(key.fileobj)
-
-        print(f"Saving server state to {self.server_path}")
-        self.save_state()
+        
+        try:
+            server.wait_for_termination()
+        except KeyboardInterrupt:
+            self.handle_shutdown(None, None)
+        finally:
+            server.stop(0)
 
     def handle_shutdown(self, signum, frame):
+        """Handle server shutdown."""
         print("Server shutting down...")
         self.running = False
-
-    def accept_connection(self, sock: socket.socket):
-        """Accept a new client connection."""
-        client, addr = sock.accept()
-        client.setblocking(False)
-        self.selector.register(client, selectors.EVENT_READ, self.handle_client)
-        self.client_sessions[client] = None
-        print(f"New connection from {addr}")
-
-    def handle_client(self, sock: socket.socket):
-        """Handle client messages."""
-        try:
-            data = sock.recv(4096)
-            if not data:
-                self.close_connection(sock)
-                return
-
-            # We may receive multiple messages at once
-            offset = 0
-            while offset < len(data):
-                dm = data[offset:]
-                message_type = self.protocol.get_message_type(dm)
-                message, message_len = self.protocol.message_class(message_type).unpack_server(dm)
-                print(f"Received message of type {message_type}, {dm} -> {message}")
-                self.process_message(sock, message)
-                offset += message_len
-
-        except Exception as e:
-            print(f"Error handling client: {e}")
-            self.close_connection(sock)
-
-    def process_message(self, sock: socket.socket, message: ProtocolMessage):
-        """Process a received message."""
-        if message.type == MessageType.CREATE_ACCOUNT:
-            username, password = message.name, message.password
-            success = self.account_manager.create_account(username, password)
-            response = message.pack_client(success)
-            sock.send(response)
-
-        elif message.type == MessageType.LOGIN:
-            username, password = message.name, message.password
-            user = self.account_manager.login(username, password)
-            if user:
-                self.client_sessions[sock] = user.name
-                response = message.pack_client(None)
-            else:
-                response = message.pack_client("Invalid username or password")
-            sock.send(response)
-
-        elif self.client_sessions[sock] == -1:
-            print("Message received before login:", message.type)
-
-        elif message.type == MessageType.LOGOUT:
-            self.client_sessions[sock] = None
-
-        elif message.type == MessageType.LIST_USERS:
-            pattern = message.pattern
-            accounts = self.account_manager.list_accounts(pattern)
-            # Cap to valid range
-            offset = max(0, message.offset)
-            if message.limit == -1:
-                accounts = accounts[offset:]
-            else:
-                limit = min(len(accounts), offset + message.limit)
-                accounts = accounts[offset:limit]
-            response = message.pack_client(accounts)
-            sock.send(response)
-
-        elif message.type == MessageType.DELETE_ACCOUNT:
-            self.account_manager.delete_account(self.client_sessions[sock])
-            self.client_sessions[sock] = None
-
-        elif message.type == MessageType.SEND_MESSAGE:
-            recipient, content = message.receiver, message.content
-            # Make sure the recipient exists
-            if self.account_manager.get_user(recipient) is None:
-                return
-
-            sender_id = self.client_sessions[sock]
-            message = Message(self.next_message_id, sender_id, content)
-            self.next_message_id += 1
-
-            # See if any clients are connected as the recipient
-            read = False
-            for client_sock, user_id in self.client_sessions.items():
-                if user_id == recipient:
-                    response = (self.protocol.message_class(MessageType.RECEIVED_MESSAGE))(message)
-                    client_sock.send(response.pack_client(None))
-                    read = True
-            if read:
-                self.account_manager.get_user(recipient).add_read_message(message)
-            else:
-                self.account_manager.get_user(recipient).add_message(message)
-
-        elif message.type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
-            user = self.account_manager.get_user(self.client_sessions[sock])
-            response = message.pack_client(user.get_number_of_unread_messages())
-            sock.send(response)
-
-        elif message.type == MessageType.GET_NUMBER_OF_READ_MESSAGES:
-            user = self.account_manager.get_user(self.client_sessions[sock])
-            response = message.pack_client(user.get_number_of_read_messages())
-            sock.send(response)
-
-        elif message.type == MessageType.POP_UNREAD_MESSAGES:
-            user = self.account_manager.get_user(self.client_sessions[sock])
-            messages = user.pop_unread_messages(message.num_messages)
-            response = message.pack_client(messages)
-            sock.send(response)
-
-        elif message.type == MessageType.GET_READ_MESSAGES:
-            user = self.account_manager.get_user(self.client_sessions[sock])
-            messages = user.get_read_messages(message.offset, message.num_messages)
-            response = message.pack_client(messages)
-            sock.send(response)
-
-        elif message.type == MessageType.DELETE_MESSAGES:
-            user = self.account_manager.get_user(self.client_sessions[sock])
-            user.delete_messages(message.message_ids)
-
-        else:
-            print(f"Unknown message type: {message.type}")
-
-    def close_connection(self, sock: socket.socket):
-        """Close a client connection."""
-        if sock in self.client_sessions:
-            self.client_sessions.pop(sock)
-        self.selector.unregister(sock)
-        sock.close()
+        print(f"Saving server state to {self.server_path}")
+        self.save_state()

@@ -1,5 +1,23 @@
 # Engineering Notebook
 
+## Updating chat application to use gRPC
+
+### 2/13/25
+
+- Worked on migrating the chat system from custom socket/JSON protocol to gRPC. This involved:
+  1. creating chat.proto for protocol buffer definitions
+  2. updating server to use gRPC servicer pattern
+  3. updating client to use gRPC stubs
+  4. creating new gRPC-specific tests
+
+- Ran into an interesting issue with protobuf's optional fields. Initially tried to test for None values (e.g., `assertIsNone(response.error)`), but this didn't work because protobuf handles optional fields differently than Python's None. Fixed by using protobuf's `HasField()` method instead (e.g., `assertFalse(response.HasField('error'))`).
+
+- Removed the old socket-based tests and custom wire protocol/json implementations because they're not needed anymore. woohoo! The new gRPC implementation hopefully provides better type safety and simplified error handling via gRPC's status codes and error details instead of our custom error reporting system.
+
+---
+
+## End of engineering notebook entries for design exercise 1
+
 ### 2/12/25
 
 - At this point, our project structure has changed a bit and now looks like the following:

@@ -1,20 +1,17 @@
-import socket
+import grpc
 import threading
-from typing import Any, List
+from typing import Any, List, Optional
 from ..common.config import ConnectionSettings
-from ..common.protocol.protocol import Protocol, ProtocolMessage, MessageType
-from ..common.protocol.custom_protocol import CustomProtocol
-from ..common.protocol.json_protocol import JSONProtocol
+from ..proto import chat_pb2, chat_pb2_grpc
 from .gui import ChatGUI
 
 class ChatClient:
     def __init__(self, config: ConnectionSettings = ConnectionSettings()):
         self.host = config.host
         self.port = config.port
-        self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.socket_send_lock = threading.Lock()
-        self.protocol: Protocol = CustomProtocol() if config.use_custom_protocol else JSONProtocol()
-
+        self.channel = None
+        self.stub = None
+        
         self.gui = ChatGUI(
             on_login=self.login,
             on_logout=self.logout,
@@ -30,8 +27,10 @@ class ChatClient:
     def connect(self) -> bool:
         """Connect to the server."""
         try:
-            self.socket.connect((self.host, self.port))
-            # Start receiving thread
+            self.channel = grpc.insecure_channel(f'{self.host}:{self.port}')
+            self.stub = chat_pb2_grpc.ChatServiceStub(self.channel)
+            
+            # Start message subscription thread
             thread = threading.Thread(target=self._receive_messages)
             thread.daemon = True
             thread.start()
@@ -47,123 +46,140 @@ class ChatClient:
 
     def create_account(self, username: str, password: str):
         """Send create account request."""
-        message = (self.protocol.message_class(MessageType.CREATE_ACCOUNT))(name=username, password=password)
-        self._send(message)
+        try:
+            response = self.stub.CreateAccount(
+                chat_pb2.CreateAccountRequest(username=username, password=password)
+            )
+            if response.error:
+                self.gui.display_message(response.error)
+            else:
+                self.gui.display_message("Account created successfully, please log in")
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to create account: {e.details()}")
 
     def login(self, username: str, password: str):
         """Send login request."""
-        message = (self.protocol.message_class(MessageType.LOGIN))(name=username, password=password)
-        self._send(message)
+        try:
+            response = self.stub.Login(
+                chat_pb2.LoginRequest(username=username, password=password)
+            )
+            if response.error:
+                self.gui.display_message(response.error)
+            else:
+                self.gui.show_main_widgets()
+                self._send_initial_requests()
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to login: {e.details()}")
+
+    def _send_initial_requests(self):
+        """Send initial requests after login."""
+        try:
+            unread = self.stub.GetNumberOfUnreadMessages(
+                chat_pb2.GetNumberOfUnreadMessagesRequest()
+            )
+            self.gui.update_unread_count(unread.count)
+
+            read = self.stub.GetNumberOfReadMessages(
+                chat_pb2.GetNumberOfReadMessagesRequest()
+            )
+            self.gui.update_read_count(read.count)
+            
+            self.gui.update_messages_view()
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to get message counts: {e.details()}")
 
     def logout(self):
         """Send logout request."""
-        self._send((self.protocol.message_class(MessageType.LOGOUT))())
+        try:
+            self.stub.Logout(chat_pb2.LogoutRequest())
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to logout: {e.details()}")
 
     def list_accounts(self, pattern: str, offset: int, limit: int):
         """Send list accounts request."""
-        message = (self.protocol.message_class(MessageType.LIST_USERS))(pattern=pattern, offset=offset, limit=limit)
-        self._send(message)
+        try:
+            response = self.stub.ListUsers(
+                chat_pb2.ListUsersRequest(
+                    pattern=pattern,
+                    offset=offset,
+                    limit=limit
+                )
+            )
+            self.gui.display_users(response.usernames)
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to list accounts: {e.details()}")
 
     def send_message(self, recipient_username: str, content: str):
-        """Send a message to another user using their username."""
-        message = (self.protocol.message_class(MessageType.SEND_MESSAGE))(
-            receiver=recipient_username,  # username instead of ID
-            content=content
-        )
-        self._send(message)
+        """Send a message to another user."""
+        try:
+            self.stub.SendMessage(
+                chat_pb2.SendMessageRequest(
+                    receiver=recipient_username,
+                    content=content
+                )
+            )
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to send message: {e.details()}")
 
     def pop_unread_messages(self, count: int):
         """Pop unread messages."""
-        message = (self.protocol.message_class(MessageType.POP_UNREAD_MESSAGES))(num_messages=count)
-        self._send(message)
+        try:
+            response = self.stub.PopUnreadMessages(
+                chat_pb2.PopUnreadMessagesRequest(num_messages=count)
+            )
+            self.gui.display_messages([
+                (msg.id, msg.sender, msg.content)
+                for msg in response.messages
+            ])
+            self._send_initial_requests()
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to pop messages: {e.details()}")
 
     def get_read_messages(self, offset: int, limit: int):
         """Get read messages."""
-        message = (self.protocol.message_class(MessageType.GET_READ_MESSAGES))(offset=offset, num_messages=limit)
-        self._send(message)
+        try:
+            response = self.stub.GetReadMessages(
+                chat_pb2.GetReadMessagesRequest(
+                    offset=offset,
+                    num_messages=limit
+                )
+            )
+            self.gui.display_messages([
+                (msg.id, msg.sender, msg.content)
+                for msg in response.messages
+            ])
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to get messages: {e.details()}")
 
     def delete_messages(self, message_ids: List[int]):
         """Delete messages."""
-        message = (self.protocol.message_class(MessageType.DELETE_MESSAGES))(message_ids=message_ids)
-        self._send(message)
-        self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
-        self.gui.update_messages_view()
+        try:
+            self.stub.DeleteMessages(
+                chat_pb2.DeleteMessagesRequest(message_ids=message_ids)
+            )
+            self._send_initial_requests()
+            self.gui.update_messages_view()
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to delete messages: {e.details()}")
 
     def delete_account(self):
         """Delete account."""
-        message = (self.protocol.message_class(MessageType.DELETE_ACCOUNT))()
-        self._send(message)
-
-    def _send(self, message: ProtocolMessage):
-        """Send a message to the server."""
-        print(f"Sending message: {message.type}, {message}")
         try:
-            with self.socket_send_lock:
-                self.socket.send(message.pack_server())
-        except Exception as e:
-            self.gui.display_message(f"Failed to send message: {e}")
+            self.stub.DeleteAccount(chat_pb2.DeleteAccountRequest())
+        except grpc.RpcError as e:
+            self.gui.display_message(f"Failed to delete account: {e.details()}")
 
     def _receive_messages(self):
         """Receive messages from the server."""
         while True:
             try:
-                data = self.socket.recv(4096)
-                if not data:
+                for notification in self.stub.SubscribeToMessages(chat_pb2.SubscribeRequest()):
+                    msg = notification.message
+                    self.gui.display_message(f"New message from {msg.sender}")
+                    self._send_initial_requests()
+                    self.gui.update_messages_view()
+            except grpc.RpcError as e:
+                if e.code() == grpc.StatusCode.CANCELLED:
                     break
-
-                # We may receive multiple messages at once
-                offset = 0
-                while offset < len(data):
-                    dm = data[offset:]
-                    message_type = self.protocol.get_message_type(dm)
-                    ret, ret_len = self.protocol.message_class(message_type).unpack_client(dm)
-                    print(f"Received message: {message_type}, {dm} -> {ret}")
-                    self._handle_response(message_type, ret)
-                    offset += ret_len
-            except Exception as e:
-                self.gui.display_message(f"Connection error: {e}")
+                self.gui.display_message(f"Connection error: {e.details()}")
                 break
-
-        self.socket.close()
-
-    def _handle_response(self, msg_type: MessageType, response: Any):
-        """Handle server responses."""
-
-        if msg_type == MessageType.CREATE_ACCOUNT:
-            if response is not None:
-                self.gui.display_message(response)
-            else:
-                self.gui.display_message("Account created successfully, please log in")
-
-        elif msg_type == MessageType.LOGIN:
-            if response is not None:
-                self.gui.display_message(response)
-            else:
-                self.gui.show_main_widgets()
-                self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
-                self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
-                self.gui.update_messages_view()
-
-        elif msg_type == MessageType.LIST_USERS:
-            self.gui.display_users(response)
-
-        elif msg_type == MessageType.GET_NUMBER_OF_UNREAD_MESSAGES:
-            self.gui.update_unread_count(response)
-
-        elif msg_type == MessageType.GET_NUMBER_OF_READ_MESSAGES:
-            self.gui.update_read_count(response)
-
-        elif msg_type == MessageType.POP_UNREAD_MESSAGES:
-            self.gui.display_messages(response)
-            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_UNREAD_MESSAGES))())
-            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
-            self.gui.update_messages_view()
-
-        elif msg_type == MessageType.GET_READ_MESSAGES:
-            self.gui.display_messages(response)
-
-        elif msg_type == MessageType.RECEIVED_MESSAGE:
-            msg = response.new_message
-            self._send((self.protocol.message_class(MessageType.GET_NUMBER_OF_READ_MESSAGES))())
-            self.gui.update_messages_view()
-            self.gui.display_message(f"New message from {msg.sender}")
