@@ -10,18 +10,17 @@ The server and client can be configured using the shared `config.json` file. Thi
 - `server_data`: The path to the server data file. Default is `server_data.json`.
 
 ### Running
-Once the configuration file is set up, the server can be started with
+Generate the gRPC code from the proto file:
 ```bash
-python -m chat_system.server
-```
-and the client can be started with
-```bash
-python -m chat_system.client
+python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. chat_system/proto/chat.proto
 ```
 
-You can optionally give an alternative path to a config file as a command line argument:
+This will generate two files:
+chat_system/proto/chat_pb2.py (message classes) and chat_system/proto/chat_pb2_grpc.py (service classes).
+
+The full test suite can be run by:
 ```bash
-python -m chat_system.server path/to/config.json
+python -m unittest discover chat_system/tests
 ```
 
 Our codebase is organized such that it has the following structure:
