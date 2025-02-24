@@ -1,6 +1,6 @@
 import unittest
-from ..server.account_manager import AccountManager
-from ..common.user import Message
+from chat_system.server.account_manager import AccountManager
+from chat_system.common.user import Message
 
 class TestAccountManager(unittest.TestCase):
     def setUp(self):

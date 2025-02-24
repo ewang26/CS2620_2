@@ -1,10 +1,10 @@
 import unittest
-from ..common.protocol.custom_protocol import (
+from chat_system.common.protocol.custom_protocol import (
     CustomProtocol,
     Custom_CreateAccountMessage, Custom_LoginMessage,
     Custom_ListUsersMessage
 )
-from ..common.user import User
+from chat_system.common.user import User
 
 class TestCustomProtocol(unittest.TestCase):
     def setUp(self):
