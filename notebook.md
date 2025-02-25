@@ -3,10 +3,11 @@
 ## Updating chat application to use gRPC
 
 ### 2/24/25
+- Added a new test to measure the size of the messages sent over the wire. In general, we see that the gRPC messages are slightly smaller than our own custom protocol, ranging from a few bytes to sometimes half the size. However, this test doesn't seem to include gRPC headers, since it occasionally reports a size of 0 bytes. I was unable to find out how to measure the size of these headers; however, I would expect that they are not very large, and would likely put gRPC at an equal level to our custom protocol, but still much smaller than JSON.
 - Added a new test for subscribing to messages, since the previous error with subscribing was not caught by our tests.
 - Realized that our previous design of passing messages to logged-in receiving clients needs to be changed now that we use a gRPC subscription model. Specifically, we need to add a queue to each user, which we then add messages to when they are received. This way, each connection can poll the server for new messages.   
 
-### 2/13/25
+### 2/23/25
 
 - Worked on migrating the chat system from custom socket/JSON protocol to gRPC. This involved:
   1. creating chat.proto for protocol buffer definitions
