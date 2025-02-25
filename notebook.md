@@ -2,6 +2,10 @@
 
 ## Updating chat application to use gRPC
 
+### 2/24/25
+- Added a new test for subscribing to messages, since the previous error with subscribing was not caught by our tests.
+- Realized that our previous design of passing messages to logged-in receiving clients needs to be changed now that we use a gRPC subscription model. Specifically, we need to add a queue to each user, which we then add messages to when they are received. This way, each connection can poll the server for new messages.   
+
 ### 2/13/25
 
 - Worked on migrating the chat system from custom socket/JSON protocol to gRPC. This involved:

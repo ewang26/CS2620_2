@@ -1,29 +1,21 @@
 import unittest
 import grpc
-from concurrent import futures
-import time
-from threading import Thread
-
-# Commented out relative imports because this wasn't working for some reason
-# from ..common.config import ConnectionSettings
-# from ..server.server import ChatServer, ChatServicer
-# from ..proto import chat_pb2, chat_pb2_grpc
 
 from chat_system.common.config import ConnectionSettings
 from chat_system.server.server import ChatServer, ChatServicer
-from chat_system.proto import chat_pb2, chat_pb2_grpc
+from chat_system.proto import chat_pb2
 
 
 class MockContext:
     def __init__(self):
         self.peer_value = "test_peer"
-    
+
     def peer(self):
         return self.peer_value
-    
+
     def abort(self, code, message):
         raise grpc.RpcError(f"Error {code}: {message}")
-    
+
     def is_active(self):
         return True
 
@@ -46,7 +38,7 @@ class TestServer(unittest.TestCase):
         # Test duplicate account
         response = self.servicer.CreateAccount(request, self.context)
         self.assertTrue(response.HasField('error'))
-        
+
         # Test empty username
         empty_request = chat_pb2.CreateAccountRequest(
             username="",
@@ -104,7 +96,7 @@ class TestServer(unittest.TestCase):
                 password="password"
             )
             self.servicer.CreateAccount(request, self.context)
-        
+
         # Test listing all users
         list_request = chat_pb2.ListUsersRequest(
             pattern="*",
@@ -115,7 +107,7 @@ class TestServer(unittest.TestCase):
         self.assertEqual(len(response.usernames), len(usernames))
         for username in usernames:
             self.assertIn(username, response.usernames)
-        
+
         # Test pattern matching
         pattern_request = chat_pb2.ListUsersRequest(
             pattern="a*",  # Should match alice
@@ -125,7 +117,7 @@ class TestServer(unittest.TestCase):
         response = self.servicer.ListUsers(pattern_request, self.context)
         self.assertEqual(len(response.usernames), 1)
         self.assertIn("alice", response.usernames)
-        
+
         # Test pagination
         paginated_request = chat_pb2.ListUsersRequest(
             pattern="*",
@@ -146,48 +138,109 @@ class TestServer(unittest.TestCase):
             chat_pb2.CreateAccountRequest(username="receiver", password="password"),
             self.context
         )
-        
+
         # Login as sender
         self.servicer.Login(
             chat_pb2.LoginRequest(username="sender", password="password"),
             self.context
         )
-        
+
         # Send message
         send_request = chat_pb2.SendMessageRequest(
             receiver="receiver",
             content="Hello, receiver!"
         )
         self.servicer.SendMessage(send_request, self.context)
-        
+
         # Check that receiver has an unread message
         # Create a new context for the receiver
         receiver_context = MockContext()
         receiver_context.peer_value = "receiver_peer"
-        
+
         # Login as receiver
         self.servicer.Login(
             chat_pb2.LoginRequest(username="receiver", password="password"),
             receiver_context
         )
-        
+
         # Check unread message count
         unread_request = chat_pb2.GetNumberOfUnreadMessagesRequest()
         unread_response = self.servicer.GetNumberOfUnreadMessages(unread_request, receiver_context)
         self.assertEqual(unread_response.count, 1)
-        
+
         # Pop the unread message
         pop_request = chat_pb2.PopUnreadMessagesRequest(num_messages=1)
         pop_response = self.servicer.PopUnreadMessages(pop_request, receiver_context)
         self.assertEqual(len(pop_response.messages), 1)
         self.assertEqual(pop_response.messages[0].sender, "sender")
         self.assertEqual(pop_response.messages[0].content, "Hello, receiver!")
-        
+
         # Check that the message is now in read messages
         read_count_request = chat_pb2.GetNumberOfReadMessagesRequest()
         read_count_response = self.servicer.GetNumberOfReadMessages(read_count_request, receiver_context)
         self.assertEqual(read_count_response.count, 1)
-        
+
+        # Get the read message
+        read_request = chat_pb2.GetReadMessagesRequest(offset=0, num_messages=1)
+        read_response = self.servicer.GetReadMessages(read_request, receiver_context)
+        self.assertEqual(len(read_response.messages), 1)
+        self.assertEqual(read_response.messages[0].sender, "sender")
+        self.assertEqual(read_response.messages[0].content, "Hello, receiver!")
+
+    def test_subscribe_messages(self):
+        """Test that a user can subscribe to messages."""
+        # Create two accounts
+        self.servicer.CreateAccount(
+            chat_pb2.CreateAccountRequest(username="sender", password="password"),
+            self.context
+        )
+        self.servicer.CreateAccount(
+            chat_pb2.CreateAccountRequest(username="receiver", password="password"),
+            self.context
+        )
+
+        # Login as sender
+        self.servicer.Login(
+            chat_pb2.LoginRequest(username="sender", password="password"),
+            self.context
+        )
+
+        # Login as receiver
+        receiver_context = MockContext()
+        receiver_context.peer_value = "receiver_peer"
+
+        # Login as receiver
+        self.servicer.Login(
+            chat_pb2.LoginRequest(username="receiver", password="password"),
+            receiver_context
+        )
+
+        # Subscribe to messages
+        subscribe_request = chat_pb2.SubscribeRequest()
+        message_stream = self.servicer.SubscribeToMessages(subscribe_request, receiver_context)
+
+        # Send message
+        send_request = chat_pb2.SendMessageRequest(
+            receiver="receiver",
+            content="Hello, receiver!"
+        )
+        self.servicer.SendMessage(send_request, self.context)
+
+        # Check that receiver has message in the stream
+        message = next(message_stream).message
+        self.assertEqual(message.sender, "sender")
+        self.assertEqual(message.content, "Hello, receiver!")
+
+        # Check unread message count
+        unread_request = chat_pb2.GetNumberOfUnreadMessagesRequest()
+        unread_response = self.servicer.GetNumberOfUnreadMessages(unread_request, receiver_context)
+        self.assertEqual(unread_response.count, 0)
+
+        # Check that the message is now in read messages
+        read_count_request = chat_pb2.GetNumberOfReadMessagesRequest()
+        read_count_response = self.servicer.GetNumberOfReadMessages(read_count_request, receiver_context)
+        self.assertEqual(read_count_response.count, 1)
+
         # Get the read message
         read_request = chat_pb2.GetReadMessagesRequest(offset=0, num_messages=1)
         read_response = self.servicer.GetReadMessages(read_request, receiver_context)
@@ -206,13 +259,13 @@ class TestServer(unittest.TestCase):
             chat_pb2.CreateAccountRequest(username="receiver", password="password"),
             self.context
         )
-        
+
         # Login as sender
         self.servicer.Login(
             chat_pb2.LoginRequest(username="sender", password="password"),
             self.context
         )
-        
+
         # Send multiple messages
         for i in range(3):
             send_request = chat_pb2.SendMessageRequest(
@@ -220,7 +273,7 @@ class TestServer(unittest.TestCase):
                 content=f"Message {i}"
             )
             self.servicer.SendMessage(send_request, self.context)
-        
+
         # Login as receiver
         receiver_context = MockContext()
         receiver_context.peer_value = "receiver_peer"
@@ -228,22 +281,22 @@ class TestServer(unittest.TestCase):
             chat_pb2.LoginRequest(username="receiver", password="password"),
             receiver_context
         )
-        
+
         # Pop all messages to read mailbox
         pop_request = chat_pb2.PopUnreadMessagesRequest(num_messages=-1)
         pop_response = self.servicer.PopUnreadMessages(pop_request, receiver_context)
         self.assertEqual(len(pop_response.messages), 3)
-        
+
         # Delete the second message
         message_id = pop_response.messages[1].id
         delete_request = chat_pb2.DeleteMessagesRequest(message_ids=[message_id])
         self.servicer.DeleteMessages(delete_request, receiver_context)
-        
+
         # Check that only 2 messages remain
         read_count_request = chat_pb2.GetNumberOfReadMessagesRequest()
         read_count_response = self.servicer.GetNumberOfReadMessages(read_count_request, receiver_context)
         self.assertEqual(read_count_response.count, 2)
-        
+
         # Get the remaining messages and verify the deleted one is gone
         read_request = chat_pb2.GetReadMessagesRequest(offset=0, num_messages=-1)
         read_response = self.servicer.GetReadMessages(read_request, receiver_context)
@@ -258,17 +311,17 @@ class TestServer(unittest.TestCase):
             chat_pb2.CreateAccountRequest(username="test_user", password="password"),
             self.context
         )
-        
+
         # Login
         self.servicer.Login(
             chat_pb2.LoginRequest(username="test_user", password="password"),
             self.context
         )
-        
+
         # Delete the account
         delete_request = chat_pb2.DeleteAccountRequest()
         self.servicer.DeleteAccount(delete_request, self.context)
-        
+
         # Verify the account is deleted by trying to login again
         login_request = chat_pb2.LoginRequest(
             username="test_user",

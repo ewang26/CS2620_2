@@ -11,7 +11,7 @@ class ChatClient:
         self.port = config.port
         self.channel = None
         self.stub = None
-        
+
         self.gui = ChatGUI(
             on_login=self.login,
             on_logout=self.logout,
@@ -29,7 +29,7 @@ class ChatClient:
         try:
             self.channel = grpc.insecure_channel(f'{self.host}:{self.port}')
             self.stub = chat_pb2_grpc.ChatServiceStub(self.channel)
-            
+
             # Start message subscription thread
             thread = threading.Thread(target=self._receive_messages)
             thread.daemon = True
@@ -74,16 +74,15 @@ class ChatClient:
     def _send_initial_requests(self):
         """Send initial requests after login."""
         try:
-            unread = self.stub.GetNumberOfUnreadMessages(
+            # Call asynchronously since they don't block each other
+            unread = self.stub.GetNumberOfUnreadMessages.future(
                 chat_pb2.GetNumberOfUnreadMessagesRequest()
             )
-            self.gui.update_unread_count(unread.count)
-
-            read = self.stub.GetNumberOfReadMessages(
+            read = self.stub.GetNumberOfReadMessages.future(
                 chat_pb2.GetNumberOfReadMessagesRequest()
             )
-            self.gui.update_read_count(read.count)
-            
+            self.gui.update_unread_count(unread.result().count)
+            self.gui.update_read_count(read.result().count)
             self.gui.update_messages_view()
         except grpc.RpcError as e:
             self.gui.display_message(f"Failed to get message counts: {e.details()}")
@@ -127,10 +126,7 @@ class ChatClient:
             response = self.stub.PopUnreadMessages(
                 chat_pb2.PopUnreadMessagesRequest(num_messages=count)
             )
-            self.gui.display_messages([
-                (msg.id, msg.sender, msg.content)
-                for msg in response.messages
-            ])
+            self.gui.display_messages(response.messages)
             self._send_initial_requests()
         except grpc.RpcError as e:
             self.gui.display_message(f"Failed to pop messages: {e.details()}")
@@ -144,10 +140,7 @@ class ChatClient:
                     num_messages=limit
                 )
             )
-            self.gui.display_messages([
-                (msg.id, msg.sender, msg.content)
-                for msg in response.messages
-            ])
+            self.gui.display_messages(response.messages)
         except grpc.RpcError as e:
             self.gui.display_message(f"Failed to get messages: {e.details()}")
 

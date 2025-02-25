@@ -49,23 +49,25 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         sender_id = self.server.client_sessions.get(context.peer())
         if not sender_id:
             context.abort(grpc.StatusCode.UNAUTHENTICATED, "Not logged in")
-            
+
         recipient = request.receiver
         if self.server.account_manager.get_user(recipient) is None:
             context.abort(grpc.StatusCode.NOT_FOUND, "Recipient not found")
-            
+
         message = Message(self.server.next_message_id, sender_id, request.content)
         self.server.next_message_id += 1
 
         # Check if recipient is online
-        read = False
+        online = False
         for peer, username in self.server.client_sessions.items():
             if username == recipient:
-                read = True
+                online = True
                 break
 
-        if read:
-            self.server.account_manager.get_user(recipient).add_read_message(message)
+        if online:
+            user = self.server.account_manager.get_user(recipient)
+            user.add_read_message(message)
+            user.message_subscriber_queue.put(message)
         else:
             self.server.account_manager.get_user(recipient).add_message(message)
 
@@ -110,21 +112,24 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
 
     def SubscribeToMessages(self, request, context):
         peer = context.peer()
+
         while context.is_active():
-            # Check for new messages
-            if peer in self.server.client_sessions:
-                username = self.server.client_sessions[peer]
-                if username:
-                    user = self.server.account_manager.get_user(username)
-                    if user and user.has_unread_messages():
-                        message = user.peek_unread_message()
-                        yield chat_pb2.MessageNotification(
-                            message=chat_pb2.Message(
-                                id=message.id,
-                                sender=message.sender,
-                                content=message.content
-                            )
+            username = self.server.client_sessions.get(peer)
+            if username:
+                user = self.server.account_manager.get_user(username)
+                if user:
+                    # Check for new messages
+                    # This get should block until a message is available
+                    message = user.message_subscriber_queue.get()
+                    if message is None: # None is the sentinel value for shutdown
+                        break
+                    yield chat_pb2.MessageNotification(
+                        message=chat_pb2.Message(
+                            id=message.id,
+                            sender=message.sender,
+                            content=message.content
                         )
+                    )
 
 class ChatServer:
     def __init__(self, config: ConnectionSettings = ConnectionSettings()):
@@ -135,10 +140,6 @@ class ChatServer:
         self.next_message_id = 0
         self.running = True
         self.server_path = config.server_data_path
-
-        # Register signal handlers
-        signal.signal(signal.SIGINT, self.handle_shutdown)
-        signal.signal(signal.SIGTERM, self.handle_shutdown)
 
     def save_state(self):
         """Save the server state to a file."""
@@ -166,15 +167,19 @@ class ChatServer:
         server.add_insecure_port(f'{self.host}:{self.port}')
         server.start()
         print(f"Server started on {self.host}:{self.port}")
-        
+
         try:
             server.wait_for_termination()
         except KeyboardInterrupt:
-            self.handle_shutdown(None, None)
+            self.handle_shutdown()
         finally:
-            server.stop(0)
+            print("Stopping server.")
+            # Unblock all threads waiting on user.message_subscriber_queue.get()
+            for user in self.account_manager.accounts.values():
+                user.message_subscriber_queue.put(None)
+            server.stop(None)
 
-    def handle_shutdown(self, signum, frame):
+    def handle_shutdown(self):
         """Handle server shutdown."""
         print("Server shutting down...")
         self.running = False

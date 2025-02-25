@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import List
+from queue import Queue
 
 @dataclass
 class Message:
@@ -12,6 +13,7 @@ class User:
     name: str
     message_queue: List[Message]
     read_mailbox: List[Message]
+    message_subscriber_queue: Queue = Queue()
 
     def add_message(self, message: Message):
         self.message_queue.append(message)

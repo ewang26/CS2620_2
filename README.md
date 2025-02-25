@@ -16,8 +16,23 @@ python -m grpc_tools.protoc -I. --python_out=. --grpc_python_out=. chat_system/p
 ```
 
 This will generate two files:
-chat_system/proto/chat_pb2.py (message classes) and chat_system/proto/chat_pb2_grpc.py (service classes).
+`chat_system/proto/chat_pb2.py` (message classes) and `chat_system/proto/chat_pb2_grpc.py` (service classes).
 
+Next, set up the configuration file in `config.json`. Once the configuration file is set up, the server can be started with
+```bash
+python -m chat_system.server
+```
+and the client can be started with
+```bash
+python -m chat_system.client
+```
+
+You can optionally give an alternative path to a config file as a command line argument:
+```bash
+python -m chat_system.server path/to/config.json
+```
+
+### Tests
 The full test suite can be run by:
 ```bash
 python -m unittest discover chat_system/tests
