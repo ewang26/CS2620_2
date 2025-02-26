@@ -2,6 +2,9 @@
 
 ## Updating chat application to use gRPC
 
+### 2/25/25
+- This is an entry for my commits yesterday. The code in ```server.py``` didn't have thread safety mechanisms and could've led to race conditions, which was important since gRPC is multithreaded. So, we added a ```sessions_lock``` to the ```ChatServer``` class and blocks around the accesses to ```client_sessions```. This way, we could make sure only one threat was able to access the shared ```client_sessions``` at a time.
+
 ### 2/24/25
 - Added a new test to measure the size of the messages sent over the wire. In general, we see that the gRPC messages are slightly smaller than our own custom protocol, ranging from a few bytes to sometimes half the size. However, this test doesn't seem to include gRPC headers, since it occasionally reports a size of 0 bytes. I was unable to find out how to measure the size of these headers; however, I would expect that they are not very large, and would likely put gRPC at an equal level to our custom protocol, but still much smaller than JSON.
 - Added a new test for subscribing to messages, since the previous error with subscribing was not caught by our tests.
