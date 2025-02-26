@@ -2,6 +2,7 @@ import grpc
 from concurrent import futures
 import signal
 import json
+import threading
 from typing import Dict, Optional
 
 from chat_system.common.config import ConnectionSettings
@@ -20,13 +21,15 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
     def Login(self, request, context):
         user = self.server.account_manager.login(request.username, request.password)
         if user:
-            self.server.client_sessions[context.peer()] = user.name
+            with self.server.sessions_lock:
+                self.server.client_sessions[context.peer()] = user.name
             return chat_pb2.LoginResponse()
         return chat_pb2.LoginResponse(error="Invalid username or password")
 
     def Logout(self, request, context):
-        if context.peer() in self.server.client_sessions:
-            self.server.client_sessions[context.peer()] = None
+        with self.server.sessions_lock:
+            if context.peer() in self.server.client_sessions:
+                self.server.client_sessions[context.peer()] = None
         return chat_pb2.LogoutResponse()
 
     def ListUsers(self, request, context):
@@ -40,13 +43,24 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         return chat_pb2.ListUsersResponse(usernames=[user.name for user in accounts])
 
     def DeleteAccount(self, request, context):
-        if context.peer() in self.server.client_sessions:
-            self.server.account_manager.delete_account(self.server.client_sessions[context.peer()])
-            self.server.client_sessions[context.peer()] = None
+        with self.server.sessions_lock:
+            peer = context.peer()
+            if peer not in self.server.client_sessions:
+                context.abort(grpc.StatusCode.UNAUTHENTICATED, "Not logged in")
+                
+            username = self.server.client_sessions[peer]
+            if not username:  # Check if username is None or empty, basically make sure it's valid
+                context.abort(grpc.StatusCode.UNAUTHENTICATED, "Not logged in")
+                
+            # Delete the account and remove session properly
+            self.server.account_manager.delete_account(username)
+            self.server.client_sessions[peer] = None
         return chat_pb2.DeleteAccountResponse()
 
     def SendMessage(self, request, context):
-        sender_id = self.server.client_sessions.get(context.peer())
+        with self.server.sessions_lock:
+            sender_id = self.server.client_sessions.get(context.peer())
+        
         if not sender_id:
             context.abort(grpc.StatusCode.UNAUTHENTICATED, "Not logged in")
 
@@ -57,36 +71,46 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         message = Message(self.server.next_message_id, sender_id, request.content)
         self.server.next_message_id += 1
 
-        # Check if recipient is online
-        online = False
-        for peer, username in self.server.client_sessions.items():
-            if username == recipient:
-                online = True
-                break
+        # Check if recipient is online. Do this atomically
+        with self.server.sessions_lock:
+            online = False
+            for peer, username in self.server.client_sessions.items():
+                if username == recipient:
+                    online = True
+                    break
 
-        if online:
-            user = self.server.account_manager.get_user(recipient)
-            user.add_read_message(message)
-            user.message_subscriber_queue.put(message)
-        else:
-            self.server.account_manager.get_user(recipient).add_message(message)
+            if online:
+                user = self.server.account_manager.get_user(recipient)
+                user.add_read_message(message)
+                user.message_subscriber_queue.put(message)
+            else:
+                self.server.account_manager.get_user(recipient).add_message(message)
 
         return chat_pb2.SendMessageResponse()
 
     def GetNumberOfUnreadMessages(self, request, context):
-        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        with self.server.sessions_lock:
+            username = self.server.client_sessions[context.peer()]
+        
+        user = self.server.account_manager.get_user(username)
         return chat_pb2.GetNumberOfUnreadMessagesResponse(
             count=user.get_number_of_unread_messages()
         )
 
     def GetNumberOfReadMessages(self, request, context):
-        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        with self.server.sessions_lock:
+            username = self.server.client_sessions[context.peer()]
+        
+        user = self.server.account_manager.get_user(username)
         return chat_pb2.GetNumberOfReadMessagesResponse(
             count=user.get_number_of_read_messages()
         )
 
     def PopUnreadMessages(self, request, context):
-        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        with self.server.sessions_lock:
+            username = self.server.client_sessions[context.peer()]
+        
+        user = self.server.account_manager.get_user(username)
         messages = user.pop_unread_messages(request.num_messages)
         return chat_pb2.PopUnreadMessagesResponse(
             messages=[
@@ -96,7 +120,10 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         )
 
     def GetReadMessages(self, request, context):
-        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        with self.server.sessions_lock:
+            username = self.server.client_sessions[context.peer()]
+        
+        user = self.server.account_manager.get_user(username)
         messages = user.get_read_messages(request.offset, request.num_messages)
         return chat_pb2.GetReadMessagesResponse(
             messages=[
@@ -106,7 +133,10 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         )
 
     def DeleteMessages(self, request, context):
-        user = self.server.account_manager.get_user(self.server.client_sessions[context.peer()])
+        with self.server.sessions_lock:
+            username = self.server.client_sessions[context.peer()]
+        
+        user = self.server.account_manager.get_user(username)
         user.delete_messages(request.message_ids)
         return chat_pb2.DeleteMessagesResponse()
 
@@ -114,7 +144,9 @@ class ChatServicer(chat_pb2_grpc.ChatServiceServicer):
         peer = context.peer()
 
         while context.is_active():
-            username = self.server.client_sessions.get(peer)
+            with self.server.sessions_lock:
+                username = self.server.client_sessions.get(peer)
+            
             if username:
                 user = self.server.account_manager.get_user(username)
                 if user:
@@ -140,6 +172,7 @@ class ChatServer:
         self.next_message_id = 0
         self.running = True
         self.server_path = config.server_data_path
+        self.sessions_lock = threading.Lock()
 
     def save_state(self):
         """Save the server state to a file."""
